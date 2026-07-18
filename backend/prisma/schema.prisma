@@ -22,12 +22,23 @@ model Company {
   updatedAt        DateTime       @updatedAt
   deletedAt        DateTime?
   
-  branches         Branch[]
-  employees        Employee[]
-  customers        Customer[]
-  businessRules    BusinessRule[]
-  reports          Report[]
-  analytics        AnalyticsSnapshot[]
+  branches             Branch[]
+  employees            Employee[]
+  customers            Customer[]
+  businessRules        BusinessRule[]
+  reports              Report[]
+  analytics            AnalyticsSnapshot[]
+  subscriptions        Subscription[]
+  passportInventories PassportInventory[]
+  hotelBookings       HotelBooking[]
+  packages            Package[]
+  accounts            Account[]
+  journals            Journal[]
+  invoices            Invoice[]
+  payments            Payment[]
+  flightBookings      FlightBooking[]
+  documents           Document[]
+  chatSessions        ChatSession[]
 }
 
 model SubscriptionPlan {
@@ -120,17 +131,19 @@ model Customer {
   deletedAt        DateTime?
 
   // 360 Relations
-  passports        PassportInventory[]
-  identities       NationalIdentity[]
-  familyMembers    FamilyMember[]
-  flightBookings   FlightBooking[]
-  hotelBookings    HotelBooking[]
+  passports          PassportInventory[]
+  identities         NationalIdentity[]
+  familyMembers      FamilyMember[]
+  flightBookings     FlightBooking[]
+  hotelBookings      HotelBooking[]
   pilgrimageBookings PilgrimageBooking[]
-  visas            VisaRecord[]
-  transactions     Transaction[]
-  chatSessions     ChatSession[]
-  documents        Document[]
-  activityLogs     ActivityLog[]
+  visas              VisaRecord[]
+  transactions       Transaction[]
+  chatSessions       ChatSession[]
+  documents          Document[]
+  activityLogs       ActivityLog[]
+  invoices           Invoice[]
+  pilgrims           Pilgrim[]
 
   @@unique([companyId, phone])
   @@index([fullName])
@@ -258,6 +271,7 @@ model Package {
   itinerary        ItineraryItem[]
   groups           PilgrimageGroup[]
   bookings         PilgrimageBooking[]
+  pilgrims         Pilgrim[]
 
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
