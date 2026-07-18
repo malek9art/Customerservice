@@ -11,6 +11,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiHeader } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
+import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
 @ApiTags('Customers CRM')
@@ -21,7 +22,10 @@ export class CustomersController {
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async create(@CurrentCompany() companyId: string, @Body() data: any) {
+  async create(
+    @CurrentCompany() companyId: string,
+    @Body() data: CreateCustomerDto,
+  ) {
     return this.customersService.create(companyId, data);
   }
 
