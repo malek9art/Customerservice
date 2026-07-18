@@ -1,28 +1,35 @@
-import { Injectable } from '@nestjs/common';
-import { AiToolRegistry } from '../tools/ai-tool-registry.service';
-import { BreService } from '../../bre/bre.service';
-import { WorkflowService } from '../../workflows/workflows.service';
+import { Injectable, Logger } from '@nestjs/common';
+import { AiOrchestrator as CoreAiOrchestrator } from '../ai-orchestrator.service';
 
 @Injectable()
 export class AiOrchestrator {
-  constructor(
-    private tools: AiToolRegistry,
-    private bre: BreService,
-    private workflow: WorkflowService,
-  ) {}
+  private readonly logger = new Logger(AiOrchestrator.name);
+
+  constructor(private coreOrchestrator: CoreAiOrchestrator) {}
 
   async execute(session: any, input: string, context: any) {
-    // 1. Supervisor Agent: Plan sequence of actions
-    // 2. Iterate through specialists (Booking, Finance, etc.)
-    // 3. Tool Calling & Execution
+    this.logger.log(`Executing Multi-Agent Chain for Session [${session?.id}]`);
 
-    // MOCK EXECUTION LOGIC
+    const result = await this.coreOrchestrator.executeStatefulChain(
+      session?.companyId || 'comp-id',
+      input,
+      {
+        sessionId: session?.id,
+        customerId: session?.customerId,
+        whatsappNumber: session?.whatsappNumber,
+        ...context,
+      },
+    );
+
     return {
-      response:
-        'Processed your request: Searching for Umrah packages in Ramadan for 2 people...',
+      response: result.finalResponse,
       agent: 'Supervisor',
-      tools: ['search_packages', 'calculate_pricing'],
+      tools: result.plan.map((p) => p.action),
       confidence: 0.98,
+      chainId: result.chainId,
+      status: result.status,
+      verification: result.verification,
+      plan: result.plan,
     };
   }
 }
