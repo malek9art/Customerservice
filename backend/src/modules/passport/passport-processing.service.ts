@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { WorkflowService } from '../workflows/workflows.service';
 import { AuditService } from '../audit/audit.service';
+import { ReceivePassportDto } from './dto/receive-passport.dto';
 
 @Injectable()
 export class PassportProcessingService {
@@ -13,10 +14,13 @@ export class PassportProcessingService {
     private audit: AuditService,
   ) {}
 
-  async receivePassport(companyId: string, data: any) {
+  async receivePassport(companyId: string, data: ReceivePassportDto) {
+    const { customerId, passportNumber, receivedById, location } = data;
     const passport = await (this.prisma as any).passportInventory.create({
       data: {
-        ...data,
+        customerId,
+        passportNumber,
+        location,
         companyId,
         status: 'RECEIVED_BY_AGENCY',
       },
@@ -26,8 +30,9 @@ export class PassportProcessingService {
       passport.id,
       null,
       'RECEIVED_BY_AGENCY',
-      data.receivedById,
+      receivedById,
       'Passport received from customer',
+      location,
     );
     await this.workflow.trigger('passport.received', {
       passportId: passport.id,
