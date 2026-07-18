@@ -29,6 +29,10 @@ export interface ActionChainExecutionResult {
     checksPassed: string[];
     checksFailed: string[];
   };
+  tokenUsage: {
+    totalTokens: number;
+    costUsd: number;
+  };
   finalResponse: string;
   executedAt: Date;
 }
@@ -45,9 +49,6 @@ export class AiOrchestrator {
     private breService: BreService,
   ) {}
 
-  /**
-   * Universal AI processing entry point (backwards compatible)
-   */
   async process(prompt: string, context: any = {}) {
     const companyId = context.companyId || 'comp-id';
     const result = await this.executeStatefulChain(companyId, prompt, context);
@@ -57,12 +58,10 @@ export class AiOrchestrator {
       confidence: 0.98,
       chainId: result.chainId,
       executionPlan: result.plan,
+      tokenUsage: result.tokenUsage,
     };
   }
 
-  /**
-   * Stateful Action Chain Execution (Planning -> Execution -> Verification)
-   */
   async executeStatefulChain(
     companyId: string,
     prompt: string,
@@ -70,6 +69,16 @@ export class AiOrchestrator {
   ): Promise<ActionChainExecutionResult> {
     const chainId = `CHAIN-${nanoid(10).toUpperCase()}`;
     this.logger.log(`Executing Stateful Action Chain [${chainId}] for prompt: "${prompt}"`);
+
+    // 0. Check Semantic Cache
+    const cachedResponse = this.memoryService.getCachedResponse(prompt, companyId);
+    if (cachedResponse) {
+      return {
+        ...cachedResponse,
+        chainId,
+        executedAt: new Date(),
+      };
+    }
 
     // STEP 1: PLANNING PHASE
     const plan = await this.planActionChain(companyId, prompt, context);
@@ -96,7 +105,6 @@ export class AiOrchestrator {
       this.logger.log(`Executing Step [${step.stepId}]: ${step.stepName} (${step.action})`);
 
       try {
-        // Pass intermediate state forward
         const stepInput = { ...step.input, previousOutputs: Object.fromEntries(outputsMap) };
 
         let stepOutput: any;
@@ -152,7 +160,6 @@ export class AiOrchestrator {
         step.status = 'SUCCESS';
         outputsMap.set(step.stepId, stepOutput);
 
-        // Log Step Execution
         if (context.sessionId) {
           await (this.prisma as any).aiActionLog.create({
             data: {
@@ -165,7 +172,7 @@ export class AiOrchestrator {
             },
           });
         }
-      } catch (err) {
+      } catch (err: any) {
         this.logger.error(`Error executing step ${step.stepId}`, err);
         step.status = 'FAILED';
         step.output = { error: err.message };
@@ -174,14 +181,16 @@ export class AiOrchestrator {
 
     // STEP 3: VERIFICATION PHASE
     const verification = this.verifyActionChain(plan);
-
     const status = verification.isValid ? 'VERIFIED_SUCCESS' : 'ESCALATED';
 
     const finalResponse = verification.isValid
       ? `Request successfully processed and verified! Goal: "${prompt}". Reference: ${chainId}.`
       : `Request processing required human supervisor verification for goal: "${prompt}".`;
 
-    return {
+    // Calculate Token Metrics
+    const tokenMetrics = this.memoryService.calculateTokens(prompt, finalResponse);
+
+    const resultResult: ActionChainExecutionResult = {
       chainId,
       companyId,
       sessionId: context.sessionId,
@@ -189,9 +198,18 @@ export class AiOrchestrator {
       status,
       plan,
       verification,
+      tokenUsage: {
+        totalTokens: tokenMetrics.totalTokens,
+        costUsd: tokenMetrics.estimatedCostUsd,
+      },
       finalResponse,
       executedAt: new Date(),
     };
+
+    // Store in Semantic Cache
+    this.memoryService.setCachedResponse(prompt, companyId, resultResult);
+
+    return resultResult;
   }
 
   private async planActionChain(

@@ -5,6 +5,26 @@ All notable changes to the TravelOS AI Enterprise OS project will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.0] - 2026-07-18
+
+### Added
+- **Frontend App Router Architecture:**
+  - Strongly typed API Client layer (`src/lib/api-client.ts`) connecting Next.js frontend directly to NestJS backend REST endpoints with live/resilient fallback context.
+  - Responsive layout shell (`AppShell`) with mobile navigation sidebar, RTL Arabic support, active operational badges, and multi-tenant header context.
+- **Real Operational Dashboards & Portals:**
+  - Executive BI Dashboard (`/`) rendering live KPI metrics for revenue, active pilgrims, confirmed GDS PNRs, cash-on-hand, and AI action logs timeline.
+  - Pilgrimage Operations Hub (`/pilgrimage`) supporting interactive execution of Room Allocation, Bus Allocation, Package Capacity Sync, and Nusuk Pilgrim Card PDF generation.
+  - Flight GDS Operations (`/flights`) supporting Amadeus live offers search, BRE fare rules evaluation (baggage/penalties/markups), live PNR creation, and e-ticket issuance.
+  - Financial Ledger & Auto-Reconciliation Portal (`/accounting`) supporting bank transfer statement processing, automated matching, and chart of accounts balances.
+  - Customer Self-Service Portal (`/customer`) providing 360° booking access, invoice history, document vault, and Nusuk digital card PDF downloads.
+  - Employee Workspace & CRM Portal (`/employee`) providing Customer 360 timeline, Visa Kanban board, physical passport inventory, and human escalation review queue.
+  - AI Multi-Agent Copilot Inspector (`/ai-copilot`) exposing stateful action chains with Planning -> Execution -> Verification step inspection.
+- **AI Token Optimization & Semantic Caching:**
+  - In-memory semantic prompt caching in `AiMemoryService` to eliminate redundant AI calls.
+  - Token counting metrics (`calculateTokens`) and GPT-4o cost estimation logging ($/1M tokens) per action chain execution.
+
+---
+
 ## [0.96.0] - 2026-07-18
 
 ### Added
