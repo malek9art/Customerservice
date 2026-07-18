@@ -1,0 +1,121 @@
+// Prisma Schema for TravelOS AI
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id               String         @id @default(uuid())
+  name             String
+  slug             String         @unique
+  logoUrl          String?
+  settings         Json           @default("{}")
+  subscriptionTier String         @default("FREE")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  
+  branches         Branch[]
+  employees        Employee[]
+  customers        Customer[]
+  packages         Package[]
+  businessRules    BusinessRule[]
+  chatSessions     ChatSession[]
+  auditLogs        AuditLog[]
+}
+
+model Branch {
+  id        String     @id @default(uuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+  name      String
+  address   String?
+  employees Employee[]
+}
+
+model Employee {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  roleId    String
+  fullName  String
+  isActive  Boolean  @default(true)
+  auditLogs AuditLog[]
+}
+
+model Customer {
+  id             String        @id @default(uuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id])
+  fullName       String
+  phone          String
+  email          String?
+  passportNumber String?
+  nationality    String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  deletedAt      DateTime?
+  chatSessions   ChatSession[]
+  bookings       Booking[]
+  documents      Document[]
+
+  @@unique([companyId, phone])
+}
+
+model BusinessRule {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  ruleName  String
+  ruleType  String   // VISA_FEE, CANCELLATION, etc.
+  conditions Json
+  outcomes   Json
+  priority   Int      @default(0)
+  isActive   Boolean  @default(true)
+}
+
+model ChatSession {
+  id         String    @id @default(uuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id])
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  messages   Message[]
+  status     String    @default("ACTIVE") // ACTIVE, ESCALATED, CLOSED
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Message {
+  id        String      @id @default(uuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id])
+  sender    String      // CUSTOMER, AI, AGENT
+  content   String
+  metadata  Json?
+  createdAt DateTime    @default(now())
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id])
+  actorId    String?
+  actor      Employee? @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  oldValues  Json?
+  newValues  Json?
+  createdAt  DateTime  @default(now())
+}
+
+// Additional models for Package, Booking, Document, Invoice, etc. would follow.
