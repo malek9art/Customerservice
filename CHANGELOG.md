@@ -5,6 +5,23 @@ All notable changes to the TravelOS AI Enterprise OS project will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-pilot] - 2026-07-18
+
+### Fixed & Optimized (Pilot Program Program Freeze & Production Hardening)
+- **Auto-Reconciliation Robustness:**
+  - Standardized reference trimming and case-insensitive matching (`paymentReference.trim().toUpperCase()`) preventing missed matches caused by extra spaces or lowercase user input.
+  - Safe parsing and filtering for non-positive or missing bank transaction amounts.
+- **Room Allocation Graceful Degradation:**
+  - Fallback assignment logic assigning `SINGLE` room type when a single unattached pilgrim remains in a multi-capacity room specification.
+- **Journal Posting Defensive Guards:**
+  - Prevented zero-amount or invalid accounting posting execution from producing empty journal records.
+- **Normalized Semantic AI Prompt Cache:**
+  - Normalized prompt strings in `AiMemoryService` to maximize cache hits across minor whitespace variations.
+- **Pilot Program Regression Test Suite:**
+  - Added `src/pilot-program-hardening.spec.ts` bringing test suite coverage to 24 tests across 9 test suites passing at 100%.
+
+---
+
 ## [1.0.0-beta] - 2026-07-18
 
 ### Fixed & Hardened

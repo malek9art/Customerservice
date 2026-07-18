@@ -65,15 +65,12 @@ export class AutoReconciliationService {
     };
     results: ReconciliationResult[];
   }> {
+    const transactions = payload?.transactions || [];
     this.logger.log(
-      `Processing bank statement for company ${companyId} with ${(payload.transactions || []).length} items`,
+      `Processing bank statement for company ${companyId} with ${transactions.length} items`,
     );
 
     const invoices = await (this.prisma as any).invoice.findMany({
-      where: { companyId },
-    });
-
-    const pilgrimageBookings = await (this.prisma as any).pilgrimageBooking.findMany({
       where: { companyId },
     });
 
@@ -87,13 +84,22 @@ export class AutoReconciliationService {
 
     const results: ReconciliationResult[] = [];
 
-    for (const tx of payload.transactions || []) {
-      const candidates: MatchingCandidate[] = [];
+    for (const tx of transactions) {
+      const txAmount = Number(tx.amount) || 0;
+      if (txAmount <= 0) {
+        this.logger.warn(`Skipping invalid bank transaction amount: ${tx.amount}`);
+        continue;
+      }
 
-      // 1. Check exact payment reference against Invoice numbers
+      const candidates: MatchingCandidate[] = [];
+      const cleanPaymentRef = String(tx.paymentReference || '').trim().toUpperCase();
+
+      // 1. Check exact payment reference against Invoice numbers (case/space insensitive)
       for (const inv of invoices) {
         const invAmount = Number(inv.amount) || 0;
-        if (tx.paymentReference && inv.number && tx.paymentReference.trim().toUpperCase() === inv.number.trim().toUpperCase()) {
+        const cleanInvNum = String(inv.number || '').trim().toUpperCase();
+
+        if (cleanPaymentRef && cleanInvNum && cleanPaymentRef === cleanInvNum) {
           candidates.push({
             targetType: 'INVOICE',
             targetId: inv.id,
@@ -102,15 +108,14 @@ export class AutoReconciliationService {
             confidenceScore: 1.0,
             matchReason: 'Exact Invoice Reference Match',
           });
-        } else if (Math.abs(invAmount - tx.amount) < 0.01) {
-          // Fuzzy check by customer name
+        } else if (Math.abs(invAmount - txAmount) < 0.01) {
           const cust = customers.find((c) => c.id === inv.customerId);
           let score = 0.65;
           let reason = 'Exact Amount Match';
 
           if (cust && tx.senderName) {
-            const cleanSender = tx.senderName.toLowerCase();
-            const cleanCust = cust.fullName.toLowerCase();
+            const cleanSender = String(tx.senderName).toLowerCase().trim();
+            const cleanCust = String(cust.fullName).toLowerCase().trim();
             if (cleanSender.includes(cleanCust) || cleanCust.includes(cleanSender)) {
               score = 0.85;
               reason = 'Amount + Customer Name Match';
@@ -130,10 +135,10 @@ export class AutoReconciliationService {
       // 2. Check against Flight Bookings
       for (const fb of flightBookings) {
         const fbAmount = Number(fb.totalAmount) || 0;
-        if (
-          tx.paymentReference &&
-          (fb.pnr === tx.paymentReference || fb.referenceNumber === tx.paymentReference)
-        ) {
+        const cleanPnr = String(fb.pnr || '').trim().toUpperCase();
+        const cleanFbRef = String(fb.referenceNumber || '').trim().toUpperCase();
+
+        if (cleanPaymentRef && (cleanPnr === cleanPaymentRef || cleanFbRef === cleanPaymentRef)) {
           candidates.push({
             targetType: 'FLIGHT_BOOKING',
             targetId: fb.id,
@@ -145,26 +150,22 @@ export class AutoReconciliationService {
         }
       }
 
-      // Sort candidates by confidence score
       candidates.sort((a, b) => b.confidenceScore - a.confidenceScore);
-
       const topMatch = candidates[0];
 
       if (topMatch && topMatch.confidenceScore >= 0.80) {
-        // High confidence match -> Execute automated reconciliation
         const payment = await (this.prisma as any).payment.create({
           data: {
             companyId,
             invoiceId: topMatch.targetType === 'INVOICE' ? topMatch.targetId : null,
-            amount: tx.amount,
+            amount: txAmount,
             method: 'BANK_TRANSFER',
-            gateway: payload.bankName,
+            gateway: payload.bankName || 'BANK',
             transactionId: tx.bankReference,
             status: 'COMPLETED',
           },
         });
 
-        // Update Invoice status if applicable
         if (topMatch.targetType === 'INVOICE') {
           await (this.prisma as any).invoice.update({
             where: { id: topMatch.targetId },
@@ -172,13 +173,12 @@ export class AutoReconciliationService {
           });
         }
 
-        // Automatically Post Journal Entry
         const journal = await this.postingEngine.postEvent(
           companyId,
           'BANK_RECONCILIATION',
           {
             id: payment.id,
-            amount: tx.amount,
+            amount: txAmount,
             bankReference: tx.bankReference,
             referenceNumber: topMatch.referenceNumber,
             description: `Auto-reconciled bank transfer ${tx.bankReference} against ${topMatch.referenceNumber}`,
@@ -187,7 +187,7 @@ export class AutoReconciliationService {
 
         results.push({
           bankReference: tx.bankReference,
-          amount: tx.amount,
+          amount: txAmount,
           senderName: tx.senderName,
           status: 'AUTOMATED_MATCH',
           confidenceScore: topMatch.confidenceScore,
@@ -198,20 +198,19 @@ export class AutoReconciliationService {
       } else if (topMatch && topMatch.confidenceScore >= 0.50) {
         results.push({
           bankReference: tx.bankReference,
-          amount: tx.amount,
+          amount: txAmount,
           senderName: tx.senderName,
           status: 'NEEDS_REVIEW',
           confidenceScore: topMatch.confidenceScore,
           candidates,
         });
       } else {
-        // Unmatched -> Post to Unreconciled Bank Suspense account
         const journal = await this.postingEngine.postEvent(
           companyId,
           'UNMATCHED_BANK_DEPOSIT',
           {
             id: `suspense-${nanoid(8)}`,
-            amount: tx.amount,
+            amount: txAmount,
             bankReference: tx.bankReference,
             description: `Unmatched bank deposit ${tx.bankReference} from ${tx.senderName}`,
           },
@@ -219,7 +218,7 @@ export class AutoReconciliationService {
 
         results.push({
           bankReference: tx.bankReference,
-          amount: tx.amount,
+          amount: txAmount,
           senderName: tx.senderName,
           status: 'UNMATCHED',
           confidenceScore: 0,
