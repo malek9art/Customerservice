@@ -1,0 +1,634 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id               String         @id @default(uuid())
+  name             String
+  slug             String         @unique
+  logoUrl          String?
+  branding         Json?          // { primaryColor: string, theme: 'light'|'dark' }
+  settings         Json           @default("{}")
+  subscriptionTier String         @default("FREE")
+  featureFlags     String[]       @default([])
+  
+  status           String         @default("ACTIVE") // ACTIVE, SUSPENDED, DELETED
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  
+  branches         Branch[]
+  employees        Employee[]
+  customers        Customer[]
+  businessRules    BusinessRule[]
+  reports          Report[]
+  analytics        AnalyticsSnapshot[]
+}
+
+model SubscriptionPlan {
+  id               String         @id @default(uuid())
+  name             String
+  slug             String         @unique
+  description      String?
+  price            Decimal
+  currency         String         @default("USD")
+  interval         String         @default("MONTHLY") // MONTHLY, YEARLY
+  
+  features         Json           // { maxEmployees: 10, aiTokens: 100000, modules: ['CRM', 'VISA'] }
+  isCustom         Boolean        @default(false)
+  
+  subscriptions    Subscription[]
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Subscription {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  planId           String
+  plan             SubscriptionPlan @relation(fields: [planId], references: [id])
+  
+  status           String         @default("ACTIVE") // ACTIVE, TRIAL, EXPIRED, CANCELLED
+  startDate        DateTime       @default(now())
+  endDate          DateTime
+  cancelAtPeriodEnd Boolean       @default(false)
+  
+  usage            Json           @default("{}") // Current period usage tracking
+  
+  invoices         SaaSInvoice[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model SaaSInvoice {
+  id               String         @id @default(uuid())
+  companyId        String
+  subscriptionId   String
+  subscription     Subscription   @relation(fields: [subscriptionId], references: [id])
+  
+  amount           Decimal
+  currency         String
+  status           String         // OPEN, PAID, UNCOLLECTIBLE
+  pdfUrl           String?
+  
+  billingDate      DateTime       @default(now())
+}
+
+model Branch {
+  id        String     @id @default(uuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id])
+  name      String
+  address   String?
+  employees Employee[]
+}
+
+model Employee {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  fullName  String
+  isActive  Boolean  @default(true)
+}
+
+model Customer {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  fullName         String
+  phone            String
+  email            String?
+  nationality      String?
+  rating           Float          @default(0)
+  classification   String?        // VIP, REGULAR, CORPORATE
+  preferences      Json           @default("{}")
+  interests        String[]       @default([])
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  // 360 Relations
+  passports        Passport[]
+  identities       NationalIdentity[]
+  familyMembers    FamilyMember[]
+  bookings         Booking[]
+  visas            VisaRecord[]
+  transactions     Transaction[]
+  chatSessions     ChatSession[]
+  documents        Document[]
+  activityLogs     ActivityLog[]
+
+  @@unique([companyId, phone])
+  @@index([fullName])
+  @@index([phone])
+}
+
+enum PassportStatus {
+  WITH_CUSTOMER
+  RECEIVED_BY_AGENCY
+  IN_SAFE
+  SUBMITTED_TO_EMBASSY
+  RECEIVED_FROM_EMBASSY
+  READY_FOR_COLLECTION
+  DELIVERED_TO_CUSTOMER
+  LOST
+  DAMAGED
+}
+
+model PassportInventory {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  customerId       String
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  
+  passportNumber   String
+  status           PassportStatus @default(RECEIVED_BY_AGENCY)
+  location         String?        // e.g., "Safe 01", "Branch Alpha", "Courier"
+  receivedDate     DateTime       @default(now())
+  returnedDate     DateTime?
+  
+  // Relations
+  visaApplicationId String?
+  visaApplication   VisaApplication? @relation(fields: [visaApplicationId], references: [id])
+  
+  logs             PassportLog[]
+  attachments      Document[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([companyId, passportNumber])
+  @@index([status])
+}
+
+model HotelBooking {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  customerId       String
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  
+  referenceNumber  String         @unique
+  hotelConfirmationNumber String?
+  supplierReference String?
+  
+  status           String         @default("CONFIRMED")
+  provider         String         // HOTELBEDS, EXPEDIA, MOCK, etc.
+  
+  hotelId          String
+  hotelName        String
+  roomDetails      Json           // Room type, count, etc.
+  checkIn          DateTime
+  checkOut         DateTime
+  
+  totalAmount      Decimal
+  currency         String         @default("USD")
+  
+  guests           Json           // Guest list
+  mealPlan         String?
+  transfers        Json?
+  
+  packageId        String?        // Link to a Package if part of one
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  
+  @@index([referenceNumber])
+  @@index([hotelId])
+  @@index([checkIn, checkOut])
+}
+
+model Package {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  name             String
+  type             String         // HAJJ, UMRAH, TOURISM, SPECIAL
+  season           String?        // e.g., "1447H", "Summer 2026"
+  description      String?
+  
+  startDate        DateTime
+  endDate          DateTime
+  durationDays     Int
+  
+  basePrice        Decimal
+  currency         String         @default("USD")
+  capacity         Int
+  remainingSlots   Int
+  
+  status           String         @default("DRAFT") // DRAFT, ACTIVE, COMPLETED, CANCELLED
+  
+  // Package Composition (links to other modules)
+  flights          Json?          // Associated flight segments/rules
+  hotels           Json?          // Associated hotels/room rules
+  transportation   Json?          // Associated bus/transfer info
+  
+  itinerary        ItineraryItem[]
+  groups           PilgrimageGroup[]
+  bookings         PilgrimageBooking[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([type, season])
+  @@index([startDate, endDate])
+}
+
+model ItineraryItem {
+  id          String   @id @default(uuid())
+  packageId   String
+  package     Package  @relation(fields: [packageId], references: [id])
+  dayNumber   Int
+  title       String
+  description String?
+  location    String?
+  startTime   DateTime?
+  endTime     DateTime?
+  type        String   // RELIGIOUS, TRAVEL, REST, MEAL
+}
+
+model PilgrimageGroup {
+  id               String         @id @default(uuid())
+  packageId        String
+  package          Package        @relation(fields: [packageId], references: [id])
+  name             String
+  leaderId         String?        // Employee ID
+  supervisorId     String?        // Employee ID
+  busNumber        String?
+  capacity         Int
+  
+  pilgrims         Pilgrim[]
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model PilgrimageBooking {
+  id               String         @id @default(uuid())
+  packageId        String
+  package          Package        @relation(fields: [packageId], references: [id])
+  customerId       String
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  
+  status           String         @default("PENDING")
+  totalAmount      Decimal
+  paidAmount       Decimal        @default(0)
+  
+  pilgrims         Pilgrim[]
+  
+  createdAt        DateTime       @default(now())
+}
+
+model Account {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  code             String         // e.g., 101001
+  name             String
+  type             String         // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  balance          Decimal        @default(0)
+  currency         String         @default("USD")
+  
+  journalEntries   JournalEntry[]
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([companyId, code])
+}
+
+model Journal {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  referenceNumber  String         @unique
+  date             DateTime       @default(now())
+  description      String?
+  sourceType       String?        // BOOKING, VISA, MANUAL
+  sourceId         String?
+  
+  entries          JournalEntry[]
+  
+  createdAt        DateTime       @default(now())
+}
+
+model JournalEntry {
+  id               String   @id @default(uuid())
+  journalId        String
+  journal          Journal  @relation(fields: [journalId], references: [id])
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id])
+  
+  debit            Decimal  @default(0)
+  credit           Decimal  @default(0)
+  
+  createdAt        DateTime @default(now())
+}
+
+model Invoice {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  customerId       String?
+  customer         Customer?      @relation(fields: [customerId], references: [id])
+  
+  number           String         @unique
+  amount           Decimal
+  taxAmount        Decimal        @default(0)
+  status           String         @default("DRAFT") // DRAFT, SENT, PAID, PARTIAL, VOID
+  dueDate          DateTime?
+  
+  items            Json           // Invoice lines
+  payments         Payment[]
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Payment {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  invoiceId        String?
+  invoice          Invoice?       @relation(fields: [invoiceId], references: [id])
+  
+  amount           Decimal
+  method           String         // CASH, BANK_TRANSFER, GATEWAY
+  gateway          String?
+  transactionId    String?
+  status           String         @default("COMPLETED")
+  
+  createdAt        DateTime       @default(now())
+}
+
+model Pilgrim {
+  id                  String            @id @default(uuid())
+  bookingId           String
+  booking             PilgrimageBooking @relation(fields: [bookingId], references: [id])
+  groupId             String?
+  group               PilgrimageGroup?  @relation(fields: [groupId], references: [id])
+  customerId          String
+  customer            Customer          @relation(fields: [customerId], references: [id])
+  
+  packageId           String
+  package             Package           @relation(fields: [packageId], references: [id])
+
+  medicalInfo         String?
+  emergencyContact    String?
+  vaccinationStatus   String?           // PENDING, COMPLETED
+  digitalCardUrl      String?
+  
+  minaCamp            String?
+  arafatCamp          String?
+  
+  createdAt           DateTime          @default(now())
+}
+
+model NationalIdentity {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  idNumber   String
+  expiryDate DateTime
+  country    String
+  fileUrl    String?
+  createdAt  DateTime @default(now())
+}
+
+model FamilyMember {
+  id           String   @id @default(uuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id])
+  fullName     String
+  relationship String
+  phone        String?
+  createdAt    DateTime @default(now())
+}
+
+model FlightBooking {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  customerId       String
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  
+  referenceNumber  String         @unique // Internal reference
+  pnr              String?        // GDS Reference
+  status           String         @default("PENDING") // PNR_CREATED, TICKETED, CANCELLED
+  provider         String         // AMADEUS, SABRE, etc.
+  
+  totalAmount      Decimal
+  currency         String         @default("USD")
+  
+  passengers       Json           // List of passenger details
+  segments         Json           // Flight segments data
+  fareDetails      Json
+  ticketNumbers    String[]       @default([])
+  
+  assignedEmployeeId String?
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  
+  @@index([pnr])
+  @@index([referenceNumber])
+}
+
+model VisaRecord {
+  id          String   @id @default(uuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  country     String
+  visaType    String
+  status      String
+  expiryDate  DateTime?
+}
+
+model Transaction {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  amount     Decimal
+  type       String   // PAYMENT, REFUND
+  status     String
+  createdAt  DateTime @default(now())
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  action     String
+  description String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  VERIFIED
+  REJECTED
+  EXPIRED
+  ARCHIVED
+}
+
+model Document {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  customerId       String?
+  customer         Customer?      @relation(fields: [customerId], references: [id])
+  type             String         // PASSPORT, VISA, RECEIPT, etc.
+  status           DocumentStatus @default(PENDING)
+  fileName         String
+  fileUrl          String
+  fileHash         String?        // For integrity check
+  mimeType         String
+  size             Int
+  version          Int            @default(1)
+  
+  // OCR & Intelligence
+  ocrData          Json?
+  confidenceScore  Float          @default(0)
+  mrzData          Json?          // Specifically for passports
+  extractedData    Json?          // Structured AI extraction
+  
+  // Metadata
+  issueDate        DateTime?
+  expiryDate       DateTime?
+  metadata         Json?          // Custom fields per doc type
+  
+  // Relations
+  parentId         String?        // For versioning
+  parent           Document?      @relation("DocumentVersions", fields: [parentId], references: [id])
+  versions         Document[]     @relation("DocumentVersions")
+  
+  tags             String[]
+  isEncrypted      Boolean        @default(true)
+  hasWatermark     Boolean        @default(false)
+
+  // Timeline & Audit
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  @@index([companyId, status])
+  @@index([expiryDate])
+  @@index([type])
+}
+
+model BusinessRule {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  ruleName  String
+  ruleType  String   // VISA_FEE, CANCELLATION, etc.
+  conditions Json
+  outcomes   Json
+  priority   Int      @default(0)
+  isActive   Boolean  @default(true)
+}
+
+enum MessageRole {
+  CUSTOMER
+  AI
+  AGENT
+  SYSTEM
+}
+
+model ChatSession {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  customerId       String
+  customer         Customer       @relation(fields: [customerId], references: [id])
+  
+  whatsappNumber   String
+  status           String         @default("ACTIVE") // ACTIVE, ESCALATED, CLOSED
+  
+  metadata         Json           @default("{}")
+  summary          String?
+  lastMessageAt    DateTime       @default(now())
+  
+  messages         ChatMessage[]
+  aiLogs           AiActionLog[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([companyId, status])
+  @@index([whatsappNumber])
+}
+
+model ChatMessage {
+  id               String      @id @default(uuid())
+  sessionId        String
+  session          ChatSession @relation(fields: [sessionId], references: [id])
+  role             MessageRole
+  content          String
+  type             String      @default("TEXT") // TEXT, IMAGE, DOCUMENT, AUDIO, BUTTON_RESPONSE
+  mediaUrl         String?
+  metadata         Json?
+  
+  tokenCount       Int?
+  latencyMs        Int?
+  
+  createdAt        DateTime    @default(now())
+}
+
+model Report {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  name             String
+  type             String         // EXECUTIVE, FINANCIAL, SALES, AI, CUSTOMER
+  config           Json           // Stored filters and chart config
+  isScheduled      Boolean        @default(false)
+  schedule         String?        // Cron expression
+  recipients       String[]       @default([])
+  
+  createdBy        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model AnalyticsSnapshot {
+  id               String         @id @default(uuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id])
+  metricName       String         // e.g., "DAILY_REVENUE", "AI_CONFIDENCE_AVG"
+  metricValue      Float
+  dimension        String?        // e.g., "BRANCH_A", "VISA_UMRAH"
+  timestamp        DateTime       @default(now())
+  
+  @@index([companyId, metricName, timestamp])
+}
+
+model AiActionLog {
+  id               String      @id @default(uuid())
+  sessionId        String
+  session          ChatSession @relation(fields: [sessionId], references: [id])
+  agentName        String
+  action           String
+  input            Json?
+  output           Json?
+  confidenceScore  Float?
+  cost             Decimal?    @default(0)
+  
+  createdAt        DateTime    @default(now())
+}
