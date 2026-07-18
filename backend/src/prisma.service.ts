@@ -14,6 +14,7 @@ export class PrismaService implements OnModuleInit {
     customer: new Map(),
     passportInventory: new Map(),
     passportLog: new Map(),
+    nationalIdentity: new Map(),
     hotelBooking: new Map(),
     package: new Map(),
     itineraryItem: new Map(),
@@ -64,6 +65,7 @@ export class PrismaService implements OnModuleInit {
       email: 'john@example.com',
       nationality: 'SA',
       rating: 4.8,
+      interests: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -86,57 +88,114 @@ export class PrismaService implements OnModuleInit {
     }
   }
 
+  private applyWhere(entries: any[], where: any): any[] {
+    return entries.filter((item) => {
+      return Object.entries(where).every(([k, v]) => {
+        if (v === undefined) return true;
+        if (k === 'OR' && Array.isArray(v)) {
+          return (v as any[]).some((cond: any) =>
+            Object.entries(cond).every(([ck, cv]: [string, any]) => {
+              if (cv === undefined) return true;
+              if (typeof cv === 'object' && cv !== null && 'contains' in cv) {
+                const itemVal = String(item[ck] || '');
+                const searchVal = String(cv.contains);
+                return cv.mode === 'insensitive'
+                  ? itemVal.toLowerCase().includes(searchVal.toLowerCase())
+                  : itemVal.includes(searchVal);
+              }
+              return item[ck] === cv;
+            }),
+          );
+        }
+        if (typeof v === 'object' && v !== null && 'contains' in v) {
+          const itemVal = String(item[k] || '');
+          const searchVal = String((v as any).contains);
+          return (v as any).mode === 'insensitive'
+            ? itemVal.toLowerCase().includes(searchVal.toLowerCase())
+            : itemVal.includes(searchVal);
+        }
+        return item[k] === v;
+      });
+    });
+  }
+
+  private applyOrderBy(entries: any[], orderBy: any): any[] {
+    if (!orderBy) return entries;
+    const orders = Array.isArray(orderBy) ? orderBy : [orderBy];
+    return [...entries].sort((a, b) => {
+      for (const order of orders) {
+        for (const [field, dir] of Object.entries(order)) {
+          const aVal = a[field];
+          const bVal = b[field];
+          if (aVal === bVal) continue;
+          const cmp = aVal < bVal ? -1 : 1;
+          return dir === 'desc' ? -cmp : cmp;
+        }
+      }
+      return 0;
+    });
+  }
+
   private createGenericModelStore(entityName: string) {
     const store = this.stores[entityName] || (this.stores[entityName] = new Map());
+
+    const self = this;
 
     return {
       findUnique: async (args: any) => {
         if (!args?.where) return null;
-        if (args.where.id) return store.get(args.where.id) || null;
+        let record: any = null;
 
-        // Composite keys or unique fields
-        const entries = Array.from(store.values());
-        for (const [key, value] of Object.entries(args.where)) {
-          if (typeof value === 'object' && value !== null) {
-            // Handle composite keys e.g. companyId_code
-            const matches = entries.find((item) =>
-              Object.entries(value).every(([k, v]) => item[k] === v),
-            );
-            if (matches) return matches;
-          } else {
-            const matches = entries.find((item) => item[key] === value);
-            if (matches) return matches;
+        if (args.where.id) {
+          record = store.get(args.where.id) || null;
+        } else {
+          // Composite keys or unique fields
+          const entries = Array.from(store.values());
+          for (const [key, value] of Object.entries(args.where)) {
+            if (typeof value === 'object' && value !== null) {
+              // Handle composite keys e.g. companyId_code
+              const matches = entries.find((item) =>
+                Object.entries(value as Record<string, any>).every(([k, v]) => item[k] === v),
+              );
+              if (matches) { record = matches; break; }
+            } else {
+              const matches = entries.find((item) => item[key] === value);
+              if (matches) { record = matches; break; }
+            }
           }
         }
-        return null;
+
+        return record;
       },
       findFirst: async (args: any) => {
-        const entries = Array.from(store.values());
-        if (!args?.where) return entries[0] || null;
-
-        const filtered = entries.filter((item) => {
-          return Object.entries(args.where).every(([k, v]) => {
-            if (v === undefined) return true;
-            return item[k] === v;
-          });
-        });
-        return filtered[0] || null;
+        let entries = Array.from(store.values());
+        if (args?.where) {
+          entries = self.applyWhere(entries, args.where);
+        }
+        if (args?.orderBy) {
+          entries = self.applyOrderBy(entries, args.orderBy);
+        }
+        return entries[0] || null;
       },
       findMany: async (args: any) => {
         let entries = Array.from(store.values());
         if (args?.where) {
-          entries = entries.filter((item) => {
-            return Object.entries(args.where).every(([k, v]) => {
-              if (v === undefined) return true;
-              return item[k] === v;
-            });
-          });
+          entries = self.applyWhere(entries, args.where);
+        }
+        if (args?.orderBy) {
+          entries = self.applyOrderBy(entries, args.orderBy);
+        }
+        if (args?.skip) {
+          entries = entries.slice(args.skip);
+        }
+        if (args?.take) {
+          entries = entries.slice(0, args.take);
         }
         return entries;
       },
       create: async (args: any) => {
         const id = args?.data?.id || uuidv4();
-        const record = {
+        const record: any = {
           id,
           ...args.data,
           createdAt: new Date(),
@@ -158,10 +217,10 @@ export class PrismaService implements OnModuleInit {
       },
       update: async (args: any) => {
         const id = args?.where?.id;
-        let existing = store.get(id);
+        let existing = id ? store.get(id) : null;
         if (!existing) {
           // search by criteria
-          existing = await this.createGenericModelStore(entityName).findUnique(args);
+          existing = await self.createGenericModelStore(entityName).findUnique(args);
         }
         if (!existing) {
           existing = { id: id || uuidv4() };
@@ -183,15 +242,39 @@ export class PrismaService implements OnModuleInit {
         store.set(data.id, data);
         return data;
       },
+      upsert: async (args: any) => {
+        const model = self.createGenericModelStore(entityName);
+        const existing = await model.findUnique({ where: args.where });
+        if (existing) {
+          return model.update({ where: args.where, data: args.update });
+        } else {
+          return model.create({ data: { ...args.where, ...args.create } });
+        }
+      },
       delete: async (args: any) => {
         const id = args?.where?.id;
         const item = store.get(id);
         if (id) store.delete(id);
         return item;
       },
+      deleteMany: async (args: any) => {
+        let entries = Array.from(store.values());
+        if (args?.where) {
+          entries = self.applyWhere(entries, args.where);
+        }
+        let count = 0;
+        for (const entry of entries) {
+          store.delete(entry.id);
+          count++;
+        }
+        return { count };
+      },
       count: async (args: any) => {
-        const items = await this.createGenericModelStore(entityName).findMany(args);
-        return items.length;
+        let entries = Array.from(store.values());
+        if (args?.where) {
+          entries = self.applyWhere(entries, args.where);
+        }
+        return entries.length;
       },
     };
   }
@@ -204,8 +287,11 @@ export class PrismaService implements OnModuleInit {
   get branch() { return this.createGenericModelStore('branch'); }
   get employee() { return this.createGenericModelStore('employee'); }
   get customer() { return this.createGenericModelStore('customer'); }
+  // passportInventory is the canonical model; passport is an alias for backward compatibility
   get passportInventory() { return this.createGenericModelStore('passportInventory'); }
+  get passport() { return this.createGenericModelStore('passportInventory'); }
   get passportLog() { return this.createGenericModelStore('passportLog'); }
+  get nationalIdentity() { return this.createGenericModelStore('nationalIdentity'); }
   get hotelBooking() { return this.createGenericModelStore('hotelBooking'); }
   get package() { return this.createGenericModelStore('package'); }
   get itineraryItem() { return this.createGenericModelStore('itineraryItem'); }
