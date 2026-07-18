@@ -2,21 +2,23 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { FlightBookingService } from './flight-booking.service';
 import { FlightController } from './flight.controller';
 import { FlightProviderRegistry } from './providers/flight-provider.registry';
-import { MockAmadeusProvider } from './providers/mock-amadeus.provider';
+import { AmadeusProvider } from './providers/amadeus.provider';
+import { FareRulesEvaluatorService } from './fare-rules-evaluator.service';
 
 @Module({
   controllers: [FlightController],
   providers: [
     FlightBookingService,
     FlightProviderRegistry,
-    MockAmadeusProvider,
+    AmadeusProvider,
+    FareRulesEvaluatorService,
   ],
-  exports: [FlightBookingService],
+  exports: [FlightBookingService, FareRulesEvaluatorService],
 })
 export class FlightModule implements OnModuleInit {
   constructor(
     private registry: FlightProviderRegistry,
-    private amadeus: MockAmadeusProvider,
+    private amadeus: AmadeusProvider,
   ) {}
 
   onModuleInit() {
