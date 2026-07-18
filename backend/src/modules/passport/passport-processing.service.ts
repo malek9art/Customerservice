@@ -76,10 +76,10 @@ export class PassportProcessingService {
   ) {
     await (this.prisma as any).passportLog.create({
       data: {
-        passportId,
-        fromStatus,
-        toStatus,
-        actorId,
+        passportInventoryId: passportId,
+        previousStatus: fromStatus,
+        status: toStatus,
+        performedById: actorId,
         notes,
         location,
       },

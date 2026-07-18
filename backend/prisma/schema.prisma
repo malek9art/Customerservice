@@ -120,10 +120,12 @@ model Customer {
   deletedAt        DateTime?
 
   // 360 Relations
-  passports        Passport[]
+  passports        PassportInventory[]
   identities       NationalIdentity[]
   familyMembers    FamilyMember[]
-  bookings         Booking[]
+  flightBookings   FlightBooking[]
+  hotelBookings    HotelBooking[]
+  pilgrimageBookings PilgrimageBooking[]
   visas            VisaRecord[]
   transactions     Transaction[]
   chatSessions     ChatSession[]
@@ -161,9 +163,9 @@ model PassportInventory {
   returnedDate     DateTime?
   
   // Relations
-  visaApplicationId String?
-  visaApplication   VisaApplication? @relation(fields: [visaApplicationId], references: [id])
-  
+  visaRecordId     String?
+  visaRecord       VisaRecord?      @relation(fields: [visaRecordId], references: [id])
+
   logs             PassportLog[]
   attachments      Document[]
 
@@ -172,6 +174,23 @@ model PassportInventory {
 
   @@unique([companyId, passportNumber])
   @@index([status])
+}
+
+model PassportLog {
+  id                  String           @id @default(uuid())
+  passportInventoryId String
+  passportInventory   PassportInventory @relation(fields: [passportInventoryId], references: [id])
+
+  // Custody / status transition audit trail
+  status              PassportStatus?
+  previousStatus      PassportStatus?
+  location            String?
+  notes               String?
+  performedById       String?
+
+  createdAt           DateTime         @default(now())
+
+  @@index([passportInventoryId])
 }
 
 model HotelBooking {
@@ -448,13 +467,16 @@ model FlightBooking {
 }
 
 model VisaRecord {
-  id          String   @id @default(uuid())
+  id          String             @id @default(uuid())
   customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id])
+  customer    Customer           @relation(fields: [customerId], references: [id])
   country     String
   visaType    String
   status      String
   expiryDate  DateTime?
+
+  // Back-relation: passport records linked to this visa application
+  passportInventories PassportInventory[]
 }
 
 model Transaction {
@@ -492,6 +514,11 @@ model Document {
   company          Company        @relation(fields: [companyId], references: [id])
   customerId       String?
   customer         Customer?      @relation(fields: [customerId], references: [id])
+
+  // Link to passport inventory (e.g., passport scan attachments)
+  passportInventoryId String?
+  passportInventory   PassportInventory? @relation(fields: [passportInventoryId], references: [id])
+
   type             String         // PASSPORT, VISA, RECEIPT, etc.
   status           DocumentStatus @default(PENDING)
   fileName         String
