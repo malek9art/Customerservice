@@ -59,6 +59,18 @@ export class FlightController {
     return this.flightService.issueTicket(companyId, bookingId);
   }
 
+  @Post('bookings/:id/cancel')
+  @ApiOperation({ summary: 'Cancel flight booking order & PNR in GDS' })
+  @ApiHeader({ name: 'x-company-id', required: true })
+  @ApiParam({ name: 'id', description: 'Flight Booking ID' })
+  async cancelBooking(
+    @CurrentCompany() companyId: string,
+    @Param('id') bookingId: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.flightService.cancelBooking(companyId, bookingId, body?.reason);
+  }
+
   @Get('dashboard')
   @ApiOperation({ summary: 'Get Flight Operations Dashboard' })
   @ApiHeader({ name: 'x-company-id', required: true })

@@ -7,16 +7,16 @@ import { NotificationService } from '../notifications/notification.service';
 import { PilgrimCardPdfGenerator } from './helpers/pilgrim-card-pdf.generator';
 
 export interface RoomAllocationOptions {
-  maxRoomCapacity?: number; // e.g. 4 (QUAD), 3 (TRIPLE), 2 (DOUBLE), 1 (SINGLE)
+  maxRoomCapacity?: number;
   groupFamilies?: boolean;
   separateByGender?: boolean;
   prioritySpecialNeeds?: boolean;
 }
 
 export interface BusAllocationOptions {
-  busCapacity?: number; // e.g. 45 or 50 seats
+  busCapacity?: number;
   keepBookingsTogether?: boolean;
-  supervisors?: string[]; // Employee IDs
+  supervisors?: string[];
 }
 
 @Injectable()
@@ -37,7 +37,6 @@ export class PilgrimageService {
     packageId: string,
     pilgrimsData: any[],
   ) {
-    // 1. Check & Sync Capacity via Package Engine
     await this.packageEngine.updateAvailability(packageId, pilgrimsData.length);
     const pkg = await this.packageEngine.getPackageDetails(packageId);
 
@@ -45,24 +44,22 @@ export class PilgrimageService {
       throw new NotFoundException(`Package ${packageId} not found`);
     }
 
-    // 2. Calculate Pricing
     const unitPrice = typeof pkg.basePrice === 'number'
       ? pkg.basePrice
       : (pkg.basePrice?.toNumber ? pkg.basePrice.toNumber() : Number(pkg.basePrice) || 0);
 
     const totalAmount = unitPrice * pilgrimsData.length;
 
-    // 3. Create Booking
     const booking = await (this.prisma as any).pilgrimageBooking.create({
       data: {
         packageId,
         customerId,
         totalAmount,
+        paidAmount: 0,
         status: 'CONFIRMED',
       },
     });
 
-    // 4. Register Pilgrims
     const pilgrims = await Promise.all(
       pilgrimsData.map((data) =>
         (this.prisma as any).pilgrim.create({
@@ -76,7 +73,6 @@ export class PilgrimageService {
       ),
     );
 
-    // 5. Trigger Workflow for Pilgrimage Booking
     await this.workflow.trigger('pilgrimage.booking_created', {
       bookingId: booking.id,
       companyId,
@@ -87,21 +83,89 @@ export class PilgrimageService {
       amount: totalAmount,
     });
 
-    // 6. Real-time sync
     await this.syncPackageCapacity(companyId, packageId);
 
     return { booking, pilgrims };
   }
 
   /**
-   * Real Room Allocation Algorithm based on family grouping, gender separation, and priority special needs.
+   * Cancel Pilgrimage Booking & Restore Package Capacity
    */
+  async cancelBooking(companyId: string, bookingId: string, reason?: string) {
+    const booking = await (this.prisma as any).pilgrimageBooking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Pilgrimage booking ${bookingId} not found`);
+    }
+
+    const pilgrims = await (this.prisma as any).pilgrim.findMany({
+      where: { bookingId },
+    });
+
+    // 1. Trigger state machine workflow for cancellation & slot restoration
+    await this.workflow.trigger('pilgrimage.booking_cancelled', {
+      bookingId,
+      companyId,
+      packageId: booking.packageId,
+      customerId: booking.customerId,
+      pilgrimCount: pilgrims.length,
+      reason: reason || 'Customer requested cancellation',
+    });
+
+    // 2. If booking was paid, trigger refund accounting event
+    const paidAmount = Number(booking.paidAmount) || 0;
+    if (paidAmount > 0) {
+      await this.workflow.trigger('refund.processed', {
+        companyId,
+        bookingId,
+        amount: paidAmount,
+        description: `Refund processed for cancelled pilgrimage booking ${bookingId}`,
+      });
+    }
+
+    return {
+      success: true,
+      bookingId,
+      status: 'CANCELLED',
+      slotsRestored: pilgrims.length,
+      refundAmount: paidAmount,
+    };
+  }
+
+  /**
+   * Modify Pilgrimage Booking (Update Pilgrims / Package Options)
+   */
+  async modifyBooking(companyId: string, bookingId: string, updatedData: any) {
+    const booking = await (this.prisma as any).pilgrimageBooking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Pilgrimage booking ${bookingId} not found`);
+    }
+
+    const updatedBooking = await (this.prisma as any).pilgrimageBooking.update({
+      where: { id: bookingId },
+      data: updatedData,
+    });
+
+    await this.workflow.trigger('pilgrimage.booking_modified', {
+      bookingId,
+      companyId,
+      updatedData,
+    });
+
+    return updatedBooking;
+  }
+
   async allocateRooms(
     companyId: string,
     packageId: string,
     options: RoomAllocationOptions = {},
   ) {
-    const maxCapacity = options.maxRoomCapacity || 4; // Default QUAD
+    const maxCapacity = options.maxRoomCapacity || 4;
     const groupFamilies = options.groupFamilies !== false;
     const separateByGender = options.separateByGender !== false;
     const prioritySpecialNeeds = options.prioritySpecialNeeds !== false;
@@ -114,7 +178,6 @@ export class PilgrimageService {
       return { summary: { totalPilgrims: 0, totalRooms: 0 }, rooms: [] };
     }
 
-    // Sort pilgrims: priority special needs first
     let pool = [...pilgrims];
     if (prioritySpecialNeeds) {
       pool.sort((a, b) => {
@@ -156,14 +219,10 @@ export class PilgrimageService {
           pilgrims: chunk,
         };
 
-        // Update database records
         for (const p of chunk) {
           (this.prisma as any).pilgrim.update({
             where: { id: p.id },
-            data: {
-              roomNumber,
-              roomType,
-            },
+            data: { roomNumber, roomType },
           });
           p.roomNumber = roomNumber;
           p.roomType = roomType;
@@ -175,7 +234,6 @@ export class PilgrimageService {
     };
 
     if (groupFamilies) {
-      // Group by booking ID
       const bookingGroups = new Map<string, any[]>();
       for (const p of pool) {
         const list = bookingGroups.get(p.bookingId) || [];
@@ -219,9 +277,6 @@ export class PilgrimageService {
     };
   }
 
-  /**
-   * Real Bus Allocation Algorithm grouping pilgrims into buses without splitting booking units.
-   */
   async allocateBuses(
     companyId: string,
     packageId: string,
@@ -239,7 +294,6 @@ export class PilgrimageService {
       return { summary: { totalPilgrims: 0, totalBuses: 0 }, buses: [] };
     }
 
-    // Group by booking ID if required
     let chunks: any[][] = [];
     if (keepBookingsTogether) {
       const bookingMap = new Map<string, any[]>();
@@ -272,7 +326,6 @@ export class PilgrimageService {
       const groupName = `Bus Group ${i + 1}`;
       const supervisorId = supervisors[i % Math.max(1, supervisors.length)] || null;
 
-      // Create or update PilgrimageGroup
       const groupRecord = await (this.prisma as any).pilgrimageGroup.create({
         data: {
           packageId,
@@ -289,9 +342,7 @@ export class PilgrimageService {
       for (const pilgrim of passengers) {
         await (this.prisma as any).pilgrim.update({
           where: { id: pilgrim.id },
-          data: {
-            groupId: groupRecord.id,
-          },
+          data: { groupId: groupRecord.id },
         });
         pilgrim.groupId = groupRecord.id;
         pilgrim.busNumber = busNumber;
@@ -321,9 +372,6 @@ export class PilgrimageService {
     };
   }
 
-  /**
-   * Real-time package capacity synchronization.
-   */
   async syncPackageCapacity(companyId: string, packageId: string) {
     const pkg = await (this.prisma as any).package.findUnique({
       where: { id: packageId },
@@ -344,10 +392,6 @@ export class PilgrimageService {
       data: { remainingSlots },
     });
 
-    this.logger.log(
-      `Synced package ${packageId}: capacity=${pkg.capacity}, booked=${totalPilgrims}, remaining=${remainingSlots}`,
-    );
-
     return {
       packageId,
       capacity: pkg.capacity,
@@ -358,9 +402,6 @@ export class PilgrimageService {
     };
   }
 
-  /**
-   * Automated Pilgrim Digital Card Generation (PDF).
-   */
   async generatePilgrimCard(companyId: string, pilgrimId: string) {
     const pilgrim = await (this.prisma as any).pilgrim.findUnique({
       where: { id: pilgrimId },
@@ -409,22 +450,18 @@ export class PilgrimageService {
       agencyName: company?.name || 'TravelOS AI Agency',
     });
 
-    // Upload to S3 storage via StorageService
     const fileName = `pilgrim-card-${pilgrim.id}.pdf`;
     const uploadResult = await this.storage.uploadFile(
       companyId,
       cardPdfBuffer,
       fileName,
       'application/pdf',
-      false, // public digital card URL
+      false,
     );
 
-    // Update pilgrim record
     await (this.prisma as any).pilgrim.update({
       where: { id: pilgrimId },
-      data: {
-        digitalCardUrl: uploadResult.url,
-      },
+      data: { digitalCardUrl: uploadResult.url },
     });
 
     return {

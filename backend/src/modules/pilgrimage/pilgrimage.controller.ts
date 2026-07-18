@@ -1,5 +1,5 @@
-import { Controller, Post, Get, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiHeader, ApiParam, ApiBody } from '@nestjs/swagger';
+import { Controller, Post, Get, Patch, Body, Param, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiHeader, ApiParam } from '@nestjs/swagger';
 import { PilgrimageService, RoomAllocationOptions, BusAllocationOptions } from './pilgrimage.service';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
@@ -21,6 +21,30 @@ export class PilgrimageController {
       body.packageId,
       body.pilgrims,
     );
+  }
+
+  @Post('bookings/:id/cancel')
+  @ApiOperation({ summary: 'Cancel Pilgrimage Booking, restore package capacity, and trigger refund' })
+  @ApiHeader({ name: 'x-company-id', required: true })
+  @ApiParam({ name: 'id', description: 'Booking ID' })
+  async cancelBooking(
+    @CurrentCompany() companyId: string,
+    @Param('id') bookingId: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.pilgrimageService.cancelBooking(companyId, bookingId, body?.reason);
+  }
+
+  @Patch('bookings/:id/modify')
+  @ApiOperation({ summary: 'Modify Pilgrimage Booking details' })
+  @ApiHeader({ name: 'x-company-id', required: true })
+  @ApiParam({ name: 'id', description: 'Booking ID' })
+  async modifyBooking(
+    @CurrentCompany() companyId: string,
+    @Param('id') bookingId: string,
+    @Body() body: any,
+  ) {
+    return this.pilgrimageService.modifyBooking(companyId, bookingId, body);
   }
 
   @Post('room-allocation')

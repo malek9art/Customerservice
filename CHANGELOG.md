@@ -5,6 +5,22 @@ All notable changes to the TravelOS AI Enterprise OS project will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta] - 2026-07-18
+
+### Fixed & Hardened
+- **End-to-End Operational Lifecycle & Workflows:**
+  - Expanded `WorkflowService` event dispatcher with handlers for booking cancellations, slot restorations, flight order cancellations, physical passport custody updates, and live human agent chat escalations.
+  - Added cancellation, modification, and slot restoration endpoints in `PilgrimageController` (`POST /pilgrimage/bookings/:id/cancel`, `PATCH /pilgrimage/bookings/:id/modify`).
+  - Added flight cancellation endpoints in `FlightController` (`POST /flights/bookings/:id/cancel`).
+  - Integrated `refund.processed` accounting triggers producing balanced revenue adjustment journal postings (`4090 Revenue Adjustment` Debit, `1010 Cash/Bank` Credit).
+- **Physical Passport Custody Lifecycle:**
+  - Hardened location updates (`RECEIVED_BY_AGENCY` -> `IN_SAFE` -> `SUBMITTED_TO_EMBASSY` -> `DELIVERED_TO_CUSTOMER`) with audit trails recorded in `PassportLog`.
+- **Production Validation & Test Coverage:**
+  - Added `src/v10-beta-scenarios.spec.ts` testing 4 real-world operational scenarios (Umrah Booking Lifecycle, Flight GDS Order Cancellation, Passport Custody Chain, Human Escalation Queue).
+  - Verified 100% pass rate across all 8 test suites (20 total tests).
+
+---
+
 ## [0.97.0] - 2026-07-18
 
 ### Added

@@ -119,6 +119,37 @@ export class FlightBookingService {
     return updatedBooking;
   }
 
+  /**
+   * Cancel Flight Order & PNR
+   */
+  async cancelBooking(companyId: string, bookingId: string, reason?: string) {
+    const booking = await (this.prisma as any).flightBooking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking) {
+      throw new NotFoundException(`Flight booking ${bookingId} not found`);
+    }
+
+    const provider = this.registry.getProvider(booking.provider || 'AMADEUS');
+    await provider.cancelBooking(booking.pnr);
+
+    await this.workflow.trigger('flight.booking_cancelled', {
+      bookingId: booking.id,
+      companyId,
+      pnr: booking.pnr,
+      customerId: booking.customerId,
+      reason: reason || 'Flight cancellation requested',
+    });
+
+    return {
+      success: true,
+      bookingId: booking.id,
+      pnr: booking.pnr,
+      status: 'CANCELLED',
+    };
+  }
+
   async getDashboard(companyId: string) {
     const bookings = await (this.prisma as any).flightBooking.findMany({
       where: { companyId },
