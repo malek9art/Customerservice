@@ -85,10 +85,10 @@ export class WorkflowService {
 
     await (this.prisma as any).passportLog.create({
       data: {
-        inventoryId: payload.passportInventoryId,
+        passportInventoryId: payload.passportInventoryId,
         status: payload.status,
         location: payload.location || 'Safe 01',
-        performedBy: payload.actorId || 'SYSTEM',
+        performedById: payload.actorId || 'SYSTEM',
         notes: payload.notes || `Passport moved to ${payload.status}`,
       },
     });
