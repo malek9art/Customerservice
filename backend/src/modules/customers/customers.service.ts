@@ -113,15 +113,14 @@ export class CustomersService {
       companyId,
     );
 
-    const passport = await (this.prisma as any).passport.create({
+    const passport = await (this.prisma as any).passportInventory.create({
       data: {
+        companyId,
         customerId,
         passportNumber: (ocrResult.data as any).passportNumber || 'UNKNOWN',
-        issueDate: new Date(), // Extracted from OCR
-        expiryDate: new Date(), // Extracted from OCR
-        issuingCountry: (ocrResult.data as any).country || 'UNKNOWN',
-        fileUrl: uploaded.url,
-        ocrData: ocrResult.data,
+        status: 'RECEIVED_BY_AGENCY',
+        location: 'Intake',
+        receivedDate: new Date(),
       },
     });
 
