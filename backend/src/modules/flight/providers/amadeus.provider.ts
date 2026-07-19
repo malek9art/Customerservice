@@ -13,6 +13,7 @@ export class AmadeusProvider implements IFlightProvider {
 
   private accessToken: string = '';
   private tokenExpiresAt: number = 0;
+  private readonly searchedOffers = new Map<string, FlightOffer>();
 
   constructor(private configService: ConfigService) {}
 
@@ -59,6 +60,13 @@ export class AmadeusProvider implements IFlightProvider {
     }
   }
 
+  private rememberOffers(offers: FlightOffer[]): FlightOffer[] {
+    for (const offer of offers) {
+      this.searchedOffers.set(offer.id, offer);
+    }
+    return offers;
+  }
+
   async search(criteria: FlightSearchCriteria): Promise<FlightOffer[]> {
     const token = await this.getAuthToken();
     const baseUrl = this.configService.get<string>('AMADEUS_BASE_URL') || 'https://test.api.amadeus.com';
@@ -89,7 +97,7 @@ export class AmadeusProvider implements IFlightProvider {
 
         if (response.ok) {
           const data = await response.json();
-          return (data.data || []).map((item: any) => ({
+          const offers = (data.data || []).map((item: any) => ({
             id: item.id,
             provider: this.name,
             itineraries: item.itineraries,
@@ -100,6 +108,7 @@ export class AmadeusProvider implements IFlightProvider {
             validatingAirline: item.validatingAirlineCodes?.[0] || 'SV',
             fareRules: item.fareRules || item.pricingOptions,
           }));
+          return this.rememberOffers(offers);
         }
       } catch (err) {
         this.logger.error('Amadeus flight search call failed', err);
@@ -111,7 +120,7 @@ export class AmadeusProvider implements IFlightProvider {
     const primaryAirline = isSaudiRoute ? 'SV' : 'QR';
     const departureStr = criteria.departureDate || new Date().toISOString().split('T')[0];
 
-    return [
+    const offers: FlightOffer[] = [
       {
         id: `amadeus-offer-${criteria.origin}-${criteria.destination}-1`,
         provider: this.name,
@@ -167,6 +176,7 @@ export class AmadeusProvider implements IFlightProvider {
         },
       },
     ];
+    return this.rememberOffers(offers);
   }
 
   async createBooking(offerId: string, passengers: any[]): Promise<any> {
@@ -216,15 +226,12 @@ export class AmadeusProvider implements IFlightProvider {
       }
     }
 
+    const selectedOffer = this.searchedOffers.get(offerId);
     const pnrHash = Math.random().toString(36).substring(2, 8).toUpperCase();
     return {
       pnr: `AMD${pnrHash}`,
-      price: { total: '650.00', currency: 'USD' },
-      itineraries: [
-        {
-          segments: [{ departure: 'DXB', arrival: 'JED', carrier: 'SV' }],
-        },
-      ],
+      price: selectedOffer?.price || { total: '650.00', currency: 'USD' },
+      itineraries: selectedOffer?.itineraries || [],
       status: 'PNR_CREATED',
       createdAt: new Date(),
     };

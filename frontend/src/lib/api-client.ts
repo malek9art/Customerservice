@@ -17,7 +17,7 @@ export interface Customer {
   interests?: string[];
   passports?: Passport[];
   visas?: VisaApplication[];
-  flightBookings?: unknown[];
+  flightBookings?: FlightBooking[];
   hotelBookings?: unknown[];
   pilgrimageBookings?: unknown[];
   transactions?: unknown[];
@@ -51,6 +51,44 @@ export interface VisaApplication {
   requirements?: unknown;
   eligibilityData?: string;
   createdAt?: string;
+}
+
+export interface FlightOffer {
+  id: string;
+  provider: string;
+  validatingAirline: string;
+  itineraries: Array<{
+    duration?: string;
+    segments?: Array<{
+      departure?: { iataCode?: string; at?: string } | string;
+      arrival?: { iataCode?: string; at?: string } | string;
+      carrierCode?: string;
+      carrier?: string;
+      number?: string;
+    }>;
+  }>;
+  price: { total: string; currency: string };
+}
+
+export interface FlightBooking {
+  id: string;
+  companyId: string;
+  customerId: string;
+  referenceNumber: string;
+  pnr: string;
+  status: 'PNR_CREATED' | 'TICKETED' | 'CANCELLED';
+  provider: string;
+  totalAmount: string | number;
+  currency: string;
+  passengers: Array<{ firstName: string; lastName: string }>;
+  segments: FlightOffer['itineraries'];
+  ticketNumbers?: string[];
+  cancellationReason?: string;
+}
+
+export interface FlightSearchResult {
+  offers: FlightOffer[];
+  aiInsights: string;
 }
 
 function errorMessage(payload: unknown, status: number, statusText: string) {
@@ -197,31 +235,71 @@ export const TravelOSApi = {
   },
 
   flights: {
-    search: (criteria: any, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/flights/search', {
+    search: (
+      criteria: {
+        origin: string;
+        destination: string;
+        departureDate: string;
+        returnDate?: string;
+        passengers: { adults: number; children: number; infants: number };
+        cabinClass: string;
+      },
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<FlightSearchResult>('/flights/search', {
         method: 'POST',
         body: JSON.stringify(criteria),
         companyId,
       }),
-    evaluateFareRules: (body: any, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/flights/fare-rules/evaluate', {
+    evaluateFareRules: (
+      body: Record<string, unknown>,
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<Record<string, unknown>>('/flights/fare-rules/evaluate', {
         method: 'POST',
         body: JSON.stringify(body),
         companyId,
       }),
-    createBooking: (body: any, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/flights/bookings', {
+    createBooking: (
+      body: {
+        customerId: string;
+        provider: string;
+        offerId: string;
+        passengers: Array<{
+          firstName: string;
+          lastName: string;
+          dateOfBirth?: string;
+          email?: string;
+        }>;
+      },
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<FlightBooking>('/flights/bookings', {
         method: 'POST',
         body: JSON.stringify(body),
         companyId,
       }),
     issueTicket: (bookingId: string, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>(`/flights/bookings/${bookingId}/issue-ticket`, {
+      apiFetch<FlightBooking>(`/flights/bookings/${bookingId}/issue-ticket`, {
         method: 'POST',
         companyId,
       }),
+    cancelBooking: (
+      bookingId: string,
+      reason?: string,
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<FlightBooking>(`/flights/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        companyId,
+      }),
     getDashboard: (companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/flights/dashboard', { companyId }),
+      apiFetch<{
+        activeBookings: number;
+        totalRevenue: number;
+        pendingTicketing: number;
+      }>('/flights/dashboard', { companyId }),
   },
 
   accounting: {

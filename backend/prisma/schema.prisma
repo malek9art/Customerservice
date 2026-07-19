@@ -470,6 +470,8 @@ model FlightBooking {
   segments         Json           // Flight segments data
   fareDetails      Json
   ticketNumbers    String[]       @default([])
+  cancellationReason String?
+  cancelledAt      DateTime?
   
   assignedEmployeeId String?
   

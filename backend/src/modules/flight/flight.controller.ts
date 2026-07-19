@@ -3,6 +3,9 @@ import { ApiTags, ApiOperation, ApiHeader, ApiParam } from '@nestjs/swagger';
 import { FlightBookingService } from './flight-booking.service';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 import { EvaluationRequest } from './fare-rules-evaluator.service';
+import { SearchFlightsDto } from './dto/search-flights.dto';
+import { CreateFlightBookingDto } from './dto/create-flight-booking.dto';
+import { CancelFlightBookingDto } from './dto/cancel-flight-booking.dto';
 
 @ApiTags('Flight Operations')
 @Controller('flights')
@@ -12,7 +15,10 @@ export class FlightController {
   @Post('search')
   @ApiOperation({ summary: 'Search for flights across live GDS provider adapters' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async search(@CurrentCompany() companyId: string, @Body() criteria: any) {
+  async search(
+    @CurrentCompany() companyId: string,
+    @Body() criteria: SearchFlightsDto,
+  ) {
     return this.flightService.searchFlights(companyId, criteria);
   }
 
@@ -31,13 +37,7 @@ export class FlightController {
   @ApiHeader({ name: 'x-company-id', required: true })
   async createBooking(
     @CurrentCompany() companyId: string,
-    @Body()
-    body: {
-      customerId: string;
-      provider: string;
-      offerId: string;
-      passengers: any[];
-    },
+    @Body() body: CreateFlightBookingDto,
   ) {
     return this.flightService.createBooking(
       companyId,
@@ -66,7 +66,7 @@ export class FlightController {
   async cancelBooking(
     @CurrentCompany() companyId: string,
     @Param('id') bookingId: string,
-    @Body() body: { reason?: string },
+    @Body() body: CancelFlightBookingDto,
   ) {
     return this.flightService.cancelBooking(companyId, bookingId, body?.reason);
   }

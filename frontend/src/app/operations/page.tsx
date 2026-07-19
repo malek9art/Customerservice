@@ -4,6 +4,8 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 import { AppShell } from '@/components/app-shell';
 import {
   Customer,
+  FlightBooking,
+  FlightOffer,
   Passport,
   TravelOSApi,
   VisaApplication,
@@ -32,6 +34,23 @@ const statusLabels: Record<string, string> = {
   LOST: 'مفقود',
   DAMAGED: 'تالف',
 };
+
+const flightStatusLabels: Record<string, string> = {
+  PNR_CREATED: 'حجز مؤكد',
+  TICKETED: 'تم إصدار التذكرة',
+  CANCELLED: 'ملغي',
+};
+
+function offerRoute(offer: FlightOffer) {
+  const segment = offer.itineraries[0]?.segments?.[0];
+  const departure = typeof segment?.departure === 'string'
+    ? segment.departure
+    : segment?.departure?.iataCode;
+  const arrival = typeof segment?.arrival === 'string'
+    ? segment.arrival
+    : segment?.arrival?.iataCode;
+  return `${departure || '—'} → ${arrival || '—'}`;
+}
 
 function Panel({ title, description, children }: {
   title: string;
@@ -73,6 +92,9 @@ export default function OperationsDashboard() {
   const [inventory, setInventory] = useState<Passport[]>([]);
   const [selectedPassportId, setSelectedPassportId] = useState('');
   const [visaResult, setVisaResult] = useState<VisaApplication | null>(null);
+  const [flightOffers, setFlightOffers] = useState<FlightOffer[]>([]);
+  const [selectedOfferId, setSelectedOfferId] = useState('');
+  const [flightInsight, setFlightInsight] = useState('');
 
   const [customerForm, setCustomerForm] = useState({
     fullName: '',
@@ -94,6 +116,22 @@ export default function OperationsDashboard() {
   const [visaForm, setVisaForm] = useState({
     country: 'SA',
     visaType: 'TOURIST',
+  });
+  const [flightSearchForm, setFlightSearchForm] = useState({
+    origin: 'ADE',
+    destination: 'JED',
+    departureDate: '2026-09-10',
+    returnDate: '',
+    adults: 1,
+    children: 0,
+    infants: 0,
+    cabinClass: 'ECONOMY',
+  });
+  const [passengerForm, setPassengerForm] = useState({
+    firstName: '',
+    lastName: '',
+    dateOfBirth: '',
+    email: '',
   });
 
   const showError = (error: unknown) => {
@@ -175,6 +213,13 @@ export default function OperationsDashboard() {
       });
       await loadCustomers();
       await refreshCustomer(created.id);
+      const nameParts = created.fullName.trim().split(/\s+/);
+      setPassengerForm((current) => ({
+        ...current,
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
+        email: created.email || '',
+      }));
       setNotice({ type: 'success', text: `تم إنشاء ملف العميل ${created.fullName} واختياره للعمل.` });
       setCustomerForm({ fullName: '', phone: '', email: '', nationality: 'YE' });
     });
@@ -190,7 +235,14 @@ export default function OperationsDashboard() {
 
   const selectCustomer = (customerId: string) => {
     void runTask('customer-360', async () => {
-      await refreshCustomer(customerId);
+      const customer = await refreshCustomer(customerId);
+      const nameParts = customer.fullName.trim().split(/\s+/);
+      setPassengerForm((current) => ({
+        ...current,
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
+        email: customer.email || '',
+      }));
       setVisaResult(null);
     });
   };
@@ -248,15 +300,87 @@ export default function OperationsDashboard() {
     });
   };
 
+  const searchFlights = (event: FormEvent) => {
+    event.preventDefault();
+    void runTask('search-flights', async () => {
+      const result = await TravelOSApi.flights.search({
+        origin: flightSearchForm.origin.trim().toUpperCase(),
+        destination: flightSearchForm.destination.trim().toUpperCase(),
+        departureDate: flightSearchForm.departureDate,
+        returnDate: flightSearchForm.returnDate || undefined,
+        passengers: {
+          adults: flightSearchForm.adults,
+          children: flightSearchForm.children,
+          infants: flightSearchForm.infants,
+        },
+        cabinClass: flightSearchForm.cabinClass,
+      });
+      setFlightOffers(result.offers);
+      setSelectedOfferId(result.offers[0]?.id || '');
+      setFlightInsight(result.aiInsights);
+      setNotice({
+        type: 'success',
+        text: `تم العثور على ${result.offers.length} عرض رحلة متاح.`,
+      });
+    });
+  };
+
+  const createFlightBooking = (offer: FlightOffer) => {
+    if (!selectedCustomer) return;
+    void runTask('book-flight', async () => {
+      const booking = await TravelOSApi.flights.createBooking({
+        customerId: selectedCustomer.id,
+        provider: offer.provider,
+        offerId: offer.id,
+        passengers: [{
+          firstName: passengerForm.firstName.trim(),
+          lastName: passengerForm.lastName.trim(),
+          dateOfBirth: passengerForm.dateOfBirth || undefined,
+          email: passengerForm.email.trim() || undefined,
+        }],
+      });
+      setSelectedOfferId(offer.id);
+      await refreshCustomer(selectedCustomer.id);
+      setNotice({
+        type: 'success',
+        text: `تم إنشاء الحجز ${booking.referenceNumber} برقم PNR: ${booking.pnr}.`,
+      });
+    });
+  };
+
+  const issueFlightTicket = (booking: FlightBooking) => {
+    if (!selectedCustomer) return;
+    void runTask(`ticket-${booking.id}`, async () => {
+      const updated = await TravelOSApi.flights.issueTicket(booking.id);
+      await refreshCustomer(selectedCustomer.id);
+      setNotice({
+        type: 'success',
+        text: `تم إصدار التذكرة للحجز ${updated.pnr}: ${updated.ticketNumbers?.join('، ') || 'تم الإصدار'}.`,
+      });
+    });
+  };
+
+  const cancelFlightBooking = (booking: FlightBooking) => {
+    if (!selectedCustomer) return;
+    void runTask(`cancel-flight-${booking.id}`, async () => {
+      await TravelOSApi.flights.cancelBooking(
+        booking.id,
+        'Customer cancellation from operations dashboard',
+      );
+      await refreshCustomer(selectedCustomer.id);
+      setNotice({ type: 'success', text: `تم إلغاء الحجز ${booking.pnr}.` });
+    });
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="mb-1 text-xs font-black uppercase tracking-[0.18em] text-indigo-600">TravelOS Operations</p>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">مركز عمليات العملاء والجوازات</h1>
+            <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">مركز العمليات المتكامل</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              مساحة عمل موحدة لموظف الوكالة: افتح ملف العميل، راجع ملفه الشامل، ثم نفّذ معاملات الجواز والتأشيرة.
+              مساحة عمل موحدة لموظف الوكالة لإدارة ملف العميل والجوازات والتأشيرات وحجوزات السفر من مكان واحد.
             </p>
           </div>
           <div className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black ${
@@ -358,6 +482,7 @@ export default function OperationsDashboard() {
                       <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">{selectedCustomer.nationality || 'غير محدد'}</span>
                       <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">{customerPassports.length} جواز</span>
                       <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sky-700">{selectedCustomer.visas?.length || 0} تأشيرة</span>
+                      <span className="rounded-full bg-violet-50 px-3 py-1.5 text-violet-700">{selectedCustomer.flightBookings?.length || 0} رحلة</span>
                     </div>
                   </div>
                   {selectedCustomer.aiInsights && (
@@ -465,6 +590,138 @@ export default function OperationsDashboard() {
                       <p className="mt-2 text-emerald-800">{visaResult.country} — {visaResult.visaType}</p>
                     </div>
                   )}
+                </Panel>
+
+                <Panel title="حجوزات الطيران" description="ابحث عن رحلة، اربط الحجز بالعميل، ثم أصدر التذكرة أو ألغِ الحجز.">
+                  <form onSubmit={searchFlights} className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <Field label="من *">
+                      <input required minLength={3} maxLength={3} className={inputClass} value={flightSearchForm.origin} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, origin: e.target.value })} dir="ltr" />
+                    </Field>
+                    <Field label="إلى *">
+                      <input required minLength={3} maxLength={3} className={inputClass} value={flightSearchForm.destination} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, destination: e.target.value })} dir="ltr" />
+                    </Field>
+                    <Field label="تاريخ الذهاب *">
+                      <input required type="date" className={inputClass} value={flightSearchForm.departureDate} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, departureDate: e.target.value })} />
+                    </Field>
+                    <Field label="تاريخ العودة">
+                      <input type="date" className={inputClass} value={flightSearchForm.returnDate} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, returnDate: e.target.value })} />
+                    </Field>
+                    <Field label="الدرجة">
+                      <select className={inputClass} value={flightSearchForm.cabinClass} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, cabinClass: e.target.value })}>
+                        <option value="ECONOMY">اقتصادية</option>
+                        <option value="PREMIUM">اقتصادية مميزة</option>
+                        <option value="BUSINESS">أعمال</option>
+                        <option value="FIRST">أولى</option>
+                      </select>
+                    </Field>
+                    <Field label="البالغون">
+                      <input type="number" min={1} className={inputClass} value={flightSearchForm.adults} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, adults: Number(e.target.value) })} />
+                    </Field>
+                    <Field label="الأطفال">
+                      <input type="number" min={0} className={inputClass} value={flightSearchForm.children} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, children: Number(e.target.value) })} />
+                    </Field>
+                    <Field label="الرضّع">
+                      <input type="number" min={0} className={inputClass} value={flightSearchForm.infants} onChange={(e) => setFlightSearchForm({ ...flightSearchForm, infants: Number(e.target.value) })} />
+                    </Field>
+                    <div className="flex items-end">
+                      <button disabled={busy !== null} className={`${primaryButton} w-full`}>
+                        {busy === 'search-flights' ? 'جاري البحث...' : 'البحث عن الرحلات'}
+                      </button>
+                    </div>
+                  </form>
+
+                  {flightOffers.length > 0 && (
+                    <div className="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900">بيانات المسافر للحجز</h3>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <Field label="الاسم الأول *">
+                            <input required className={inputClass} value={passengerForm.firstName} onChange={(e) => setPassengerForm({ ...passengerForm, firstName: e.target.value })} dir="ltr" />
+                          </Field>
+                          <Field label="اسم العائلة *">
+                            <input required className={inputClass} value={passengerForm.lastName} onChange={(e) => setPassengerForm({ ...passengerForm, lastName: e.target.value })} dir="ltr" />
+                          </Field>
+                          <Field label="تاريخ الميلاد">
+                            <input type="date" className={inputClass} value={passengerForm.dateOfBirth} onChange={(e) => setPassengerForm({ ...passengerForm, dateOfBirth: e.target.value })} />
+                          </Field>
+                          <Field label="البريد الإلكتروني">
+                            <input type="email" className={inputClass} value={passengerForm.email} onChange={(e) => setPassengerForm({ ...passengerForm, email: e.target.value })} dir="ltr" />
+                          </Field>
+                        </div>
+                      </div>
+
+                      {flightInsight && (
+                        <p className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs leading-6 text-indigo-900">{flightInsight}</p>
+                      )}
+
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        {flightOffers.map((offer) => {
+                          const firstSegment = offer.itineraries[0]?.segments?.[0];
+                          return (
+                            <article key={offer.id} className={`rounded-xl border p-4 ${selectedOfferId === offer.id ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-200'}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-mono text-lg font-black text-slate-950" dir="ltr">{offerRoute(offer)}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{offer.validatingAirline} {firstSegment?.number || ''} · {offer.provider}</p>
+                                  <p className="mt-1 text-xs text-slate-500" dir="ltr">{typeof firstSegment?.departure === 'object' ? firstSegment.departure.at : ''}</p>
+                                </div>
+                                <div className="text-left">
+                                  <p className="text-xl font-black text-indigo-700">{offer.price.total}</p>
+                                  <p className="text-xs font-bold text-slate-400">{offer.price.currency}</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={busy !== null || !passengerForm.firstName.trim() || !passengerForm.lastName.trim()}
+                                onClick={() => createFlightBooking(offer)}
+                                className={`${primaryButton} mt-4 w-full`}
+                              >
+                                {busy === 'book-flight' && selectedOfferId === offer.id ? 'جاري إنشاء PNR...' : 'اختيار وإنشاء الحجز'}
+                              </button>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 border-t border-slate-100 pt-5">
+                    <h3 className="mb-3 text-sm font-black text-slate-900">رحلات العميل في Customer 360</h3>
+                    <div className="space-y-3">
+                      {selectedCustomer.flightBookings?.map((booking) => (
+                        <article key={booking.id} className="rounded-xl border border-slate-200 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <strong className="font-mono text-base text-slate-950">PNR {booking.pnr}</strong>
+                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${booking.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' : booking.status === 'TICKETED' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                  {flightStatusLabels[booking.status] || booking.status}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{booking.referenceNumber} · {booking.provider}</p>
+                              {booking.ticketNumbers?.length ? <p className="mt-1 font-mono text-xs text-emerald-700">تذكرة: {booking.ticketNumbers.join('، ')}</p> : null}
+                            </div>
+                            <div className="text-left">
+                              <p className="font-black text-slate-900">{String(booking.totalAmount)} {booking.currency}</p>
+                            </div>
+                          </div>
+                          {booking.status !== 'CANCELLED' && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {booking.status === 'PNR_CREATED' && (
+                                <button type="button" disabled={busy !== null} onClick={() => issueFlightTicket(booking)} className={primaryButton}>
+                                  {busy === `ticket-${booking.id}` ? 'جاري الإصدار...' : 'إصدار التذكرة'}
+                                </button>
+                              )}
+                              <button type="button" disabled={busy !== null} onClick={() => cancelFlightBooking(booking)} className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-extrabold text-rose-700 hover:bg-rose-100 disabled:opacity-50">
+                                {busy === `cancel-flight-${booking.id}` ? 'جاري الإلغاء...' : 'إلغاء الحجز'}
+                              </button>
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                      {!selectedCustomer.flightBookings?.length && <p className="text-sm text-slate-400">لا توجد حجوزات طيران مرتبطة بهذا العميل.</p>}
+                    </div>
+                  </div>
                 </Panel>
               </>
             )}
