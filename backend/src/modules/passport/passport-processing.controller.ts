@@ -2,6 +2,7 @@ import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { PassportProcessingService } from './passport-processing.service';
 import { ReceivePassportDto } from './dto/receive-passport.dto';
+import { UpdatePassportStatusDto } from './dto/update-passport-status.dto';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
 @ApiTags('Passport Processing')
@@ -31,15 +32,14 @@ export class PassportProcessingController {
   @ApiHeader({ name: 'x-company-id', required: true })
   async updateStatus(
     @Param('id') id: string,
-    @Body()
-    body: { status: string; location: string; actorId: string; notes?: string },
+    @Body() dto: UpdatePassportStatusDto,
   ) {
     return this.passportService.updateLocation(
       id,
-      body.location,
-      body.status,
-      body.actorId,
-      body.notes,
+      dto.location,
+      dto.status,
+      dto.actorId,
+      dto.notes,
     );
   }
 }
