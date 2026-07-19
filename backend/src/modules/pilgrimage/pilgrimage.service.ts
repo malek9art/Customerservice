@@ -38,7 +38,7 @@ export class PilgrimageService {
     pilgrimsData: any[],
   ) {
     await this.packageEngine.updateAvailability(packageId, pilgrimsData.length);
-    const pkg = await this.packageEngine.getPackageDetails(packageId);
+    const pkg = await this.packageEngine.getPackageDetails(companyId, packageId);
 
     if (!pkg) {
       throw new NotFoundException(`Package ${packageId} not found`);

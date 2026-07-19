@@ -127,6 +127,14 @@ export interface HotelGuest {
   email?: string;
 }
 
+export interface TravelPackage {
+  id: string; companyId: string; name: string; type: string; season?: string;
+  description?: string; startDate: string; endDate: string; durationDays: number;
+  basePrice: number | string; currency: string; capacity: number; remainingSlots: number;
+  status: string; flights?: Record<string, unknown>; hotels?: Record<string, unknown>;
+  transportation?: Record<string, unknown>; bookings?: unknown[]; bookedSlots?: number;
+}
+
 export interface HotelBooking {
   id: string;
   companyId: string;
@@ -257,6 +265,14 @@ export const TravelOSApi = {
       }),
     getDashboard: (companyId = DEFAULT_COMPANY_ID) =>
       apiFetch<unknown>('/visa/dashboard', { companyId }),
+  },
+
+  packages: {
+    list: (companyId = DEFAULT_COMPANY_ID) => apiFetch<TravelPackage[]>('/packages', { companyId }),
+    get: (id: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<TravelPackage>(`/packages/${id}`, { companyId }),
+    create: (body: Record<string, unknown>, companyId = DEFAULT_COMPANY_ID) => apiFetch<TravelPackage>('/packages', { method: 'POST', body: JSON.stringify(body), companyId }),
+    update: (id: string, body: Record<string, unknown>, companyId = DEFAULT_COMPANY_ID) => apiFetch<TravelPackage>(`/packages/${id}`, { method: 'PATCH', body: JSON.stringify(body), companyId }),
+    setCapacity: (id: string, capacity: number, companyId = DEFAULT_COMPANY_ID) => apiFetch<TravelPackage>(`/packages/${id}/capacity`, { method: 'PATCH', body: JSON.stringify({ capacity }), companyId }),
   },
 
   pilgrimage: {

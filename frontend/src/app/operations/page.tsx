@@ -11,6 +11,7 @@ import {
   HotelOffer,
   Passport,
   TravelOSApi,
+  TravelPackage,
   VisaApplication,
 } from '@/lib/api-client';
 
@@ -104,6 +105,8 @@ export default function OperationsDashboard() {
   const [hotelInsight, setHotelInsight] = useState('');
   const [editingHotelId, setEditingHotelId] = useState('');
   const [hotelCancellationReason, setHotelCancellationReason] = useState('طلب إلغاء من العميل');
+  const [packages, setPackages] = useState<TravelPackage[]>([]);
+  const [editingPackageId, setEditingPackageId] = useState('');
 
   const [customerForm, setCustomerForm] = useState({
     fullName: '',
@@ -156,6 +159,10 @@ export default function OperationsDashboard() {
     lastName: '',
     email: '',
   });
+  const [packageForm, setPackageForm] = useState({
+    name: '', type: 'TOURISM', season: '', description: '', startDate: '2026-10-01',
+    endDate: '2026-10-10', basePrice: 1500, currency: 'USD', capacity: 30, status: 'DRAFT',
+  });
   const [hotelEditForm, setHotelEditForm] = useState({
     checkIn: '',
     checkOut: '',
@@ -195,10 +202,12 @@ export default function OperationsDashboard() {
       TravelOSApi.health(),
       TravelOSApi.customers.search(''),
       TravelOSApi.passports.getInventory(),
+      TravelOSApi.packages.list(),
     ])
-      .then(([, customerResults, passports]) => {
+      .then(([, customerResults, passports, packageResults]) => {
         setCustomers(customerResults);
         setInventory(passports);
+        setPackages(packageResults);
         setConnected(true);
       })
       .catch((error) => {
@@ -511,13 +520,36 @@ export default function OperationsDashboard() {
   const cancelHotelBooking = (booking: HotelBooking) => {
     if (!selectedCustomer || !hotelCancellationReason.trim()) return;
     void runTask(`cancel-hotel-${booking.id}`, async () => {
-      await TravelOSApi.hotels.cancelBooking(
-        booking.id,
-        hotelCancellationReason.trim(),
-      );
+      await TravelOSApi.hotels.cancelBooking(booking.id, hotelCancellationReason.trim());
       await refreshCustomer(selectedCustomer.id);
       setEditingHotelId('');
       setNotice({ type: 'success', text: `تم إلغاء حجز الفندق ${booking.referenceNumber}.` });
+    });
+  };
+
+  const savePackage = (event: FormEvent) => {
+    event.preventDefault();
+    void runTask('save-package', async () => {
+      const payload = { ...packageForm, season: packageForm.season || undefined, description: packageForm.description || undefined };
+      if (editingPackageId) await TravelOSApi.packages.update(editingPackageId, payload);
+      else await TravelOSApi.packages.create(payload);
+      setPackages(await TravelOSApi.packages.list());
+      setEditingPackageId('');
+      setPackageForm({ name: '', type: 'TOURISM', season: '', description: '', startDate: '2026-10-01', endDate: '2026-10-10', basePrice: 1500, currency: 'USD', capacity: 30, status: 'DRAFT' });
+      setNotice({ type: 'success', text: 'تم حفظ باقة السفر بنجاح.' });
+    });
+  };
+
+  const editPackage = (pkg: TravelPackage) => {
+    setEditingPackageId(pkg.id);
+    setPackageForm({ name: pkg.name, type: pkg.type, season: pkg.season || '', description: pkg.description || '', startDate: new Date(pkg.startDate).toISOString().slice(0, 10), endDate: new Date(pkg.endDate).toISOString().slice(0, 10), basePrice: Number(pkg.basePrice), currency: pkg.currency, capacity: pkg.capacity, status: pkg.status });
+  };
+
+  const changePackageCapacity = (pkg: TravelPackage, capacity: number) => {
+    void runTask(`capacity-${pkg.id}`, async () => {
+      await TravelOSApi.packages.setCapacity(pkg.id, capacity);
+      setPackages(await TravelOSApi.packages.list());
+      setNotice({ type: 'success', text: `تم تحديث سعة ${pkg.name}.` });
     });
   };
 
@@ -1048,6 +1080,25 @@ export default function OperationsDashboard() {
                       ))}
                       {!selectedCustomer.hotelBookings?.length && <p className="text-sm text-slate-400">لا توجد حجوزات فنادق مرتبطة بهذا العميل.</p>}
                     </div>
+                  </div>
+                </Panel>
+
+                <Panel title="إدارة باقات السفر" description="أنشئ الباقات وعدّل تفاصيلها وسعتها قبل ربطها بحجوزات الحج والعمرة.">
+                  <form onSubmit={savePackage} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Field label="اسم الباقة *"><input required className={inputClass} value={packageForm.name} onChange={(e) => setPackageForm({ ...packageForm, name: e.target.value })} /></Field>
+                    <Field label="النوع"><select className={inputClass} value={packageForm.type} onChange={(e) => setPackageForm({ ...packageForm, type: e.target.value })}><option value="TOURISM">سياحة</option><option value="UMRAH">عمرة</option><option value="HAJJ">حج</option><option value="SPECIAL">خاصة</option></select></Field>
+                    <Field label="الموسم"><input className={inputClass} value={packageForm.season} onChange={(e) => setPackageForm({ ...packageForm, season: e.target.value })} /></Field>
+                    <Field label="الحالة"><select className={inputClass} value={packageForm.status} onChange={(e) => setPackageForm({ ...packageForm, status: e.target.value })}><option value="DRAFT">مسودة</option><option value="ACTIVE">نشطة</option></select></Field>
+                    <Field label="البداية"><input required type="date" className={inputClass} value={packageForm.startDate} onChange={(e) => setPackageForm({ ...packageForm, startDate: e.target.value })} /></Field>
+                    <Field label="النهاية"><input required type="date" className={inputClass} value={packageForm.endDate} onChange={(e) => setPackageForm({ ...packageForm, endDate: e.target.value })} /></Field>
+                    <Field label="السعر"><input type="number" min={0} className={inputClass} value={packageForm.basePrice} onChange={(e) => setPackageForm({ ...packageForm, basePrice: Number(e.target.value) })} /></Field>
+                    <Field label="السعة"><input type="number" min={1} className={inputClass} value={packageForm.capacity} onChange={(e) => setPackageForm({ ...packageForm, capacity: Number(e.target.value) })} /></Field>
+                    <Field label="الوصف"><input className={inputClass} value={packageForm.description} onChange={(e) => setPackageForm({ ...packageForm, description: e.target.value })} /></Field>
+                    <div className="flex items-end gap-2"><button disabled={busy !== null} className={primaryButton}>{editingPackageId ? 'حفظ التعديل' : 'إنشاء الباقة'}</button>{editingPackageId && <button type="button" onClick={() => setEditingPackageId('')} className="rounded-xl border px-3 py-2 text-sm">إلغاء</button>}</div>
+                  </form>
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    {packages.map((pkg) => <article key={pkg.id} className="rounded-xl border border-slate-200 p-4"><div className="flex justify-between gap-3"><div><h4 className="font-black">{pkg.name}</h4><p className="text-xs text-slate-500">{pkg.type} · {pkg.durationDays} أيام · {pkg.status}</p></div><strong>{String(pkg.basePrice)} {pkg.currency}</strong></div><div className="mt-3 h-2 overflow-hidden rounded bg-slate-100"><div className="h-full bg-indigo-600" style={{ width: `${Math.max(0, Math.min(100, (pkg.remainingSlots / pkg.capacity) * 100))}%` }} /></div><p className="mt-2 text-xs">المتاح {pkg.remainingSlots} من {pkg.capacity} · الحجوزات {pkg.capacity - pkg.remainingSlots}</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => editPackage(pkg)} className={primaryButton}>تعديل التفاصيل</button><button type="button" onClick={() => changePackageCapacity(pkg, pkg.capacity + 10)} className="rounded-xl border px-3 py-2 text-sm font-bold">زيادة السعة +10</button></div></article>)}
+                    {!packages.length && <p className="text-sm text-slate-400">لا توجد باقات بعد.</p>}
                   </div>
                 </Panel>
               </>
