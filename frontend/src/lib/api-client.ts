@@ -18,7 +18,7 @@ export interface Customer {
   passports?: Passport[];
   visas?: VisaApplication[];
   flightBookings?: FlightBooking[];
-  hotelBookings?: unknown[];
+  hotelBookings?: HotelBooking[];
   pilgrimageBookings?: unknown[];
   transactions?: unknown[];
   documents?: unknown[];
@@ -89,6 +89,70 @@ export interface FlightBooking {
 export interface FlightSearchResult {
   offers: FlightOffer[];
   aiInsights: string;
+}
+
+export interface HotelRoomOffer {
+  id: string;
+  type: string;
+  bedType: string;
+  mealPlan: string;
+  pricePerNight: number;
+  maxAdults: number;
+  maxChildren: number;
+  available: number;
+}
+
+export interface HotelOffer {
+  id: string;
+  hotelId: string;
+  hotelName: string;
+  provider: string;
+  images: string[];
+  stars: number;
+  location: { city: string; country: string; address: string };
+  rooms: HotelRoomOffer[];
+  totalPrice: { amount: string; currency: string };
+  cancellationPolicy: string;
+  amenities: string[];
+  checkIn: string;
+  checkOut: string;
+  requestedRooms: number;
+}
+
+export interface HotelGuest {
+  firstName: string;
+  lastName: string;
+  type: 'ADULT' | 'CHILD';
+  dateOfBirth?: string;
+  email?: string;
+}
+
+export interface HotelBooking {
+  id: string;
+  companyId: string;
+  customerId: string;
+  referenceNumber: string;
+  hotelConfirmationNumber: string;
+  status: 'CONFIRMED' | 'CANCELLED';
+  provider: string;
+  hotelId: string;
+  hotelName: string;
+  hotelImages?: string[];
+  stars?: number;
+  location?: { city: string; country: string; address: string };
+  amenities?: string[];
+  cancellationPolicy?: string;
+  roomDetails: {
+    selectedRoom: HotelRoomOffer;
+    availableRooms: HotelRoomOffer[];
+    roomCount: number;
+  };
+  checkIn: string;
+  checkOut: string;
+  totalAmount: number | string;
+  currency: string;
+  guests: HotelGuest[];
+  cancellationReason?: string;
 }
 
 function errorMessage(payload: unknown, status: number, statusText: string) {
@@ -300,6 +364,76 @@ export const TravelOSApi = {
         totalRevenue: number;
         pendingTicketing: number;
       }>('/flights/dashboard', { companyId }),
+  },
+
+  hotels: {
+    search: (
+      criteria: {
+        city: string;
+        country: string;
+        checkIn: string;
+        checkOut: string;
+        rooms: number;
+        adults: number;
+        children: number;
+      },
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<{ offers: HotelOffer[]; aiInsights: string }>('/hotels/search', {
+        method: 'POST',
+        body: JSON.stringify(criteria),
+        companyId,
+      }),
+    createBooking: (
+      body: {
+        customerId: string;
+        provider: string;
+        offerId: string;
+        roomId: string;
+        guests: HotelGuest[];
+      },
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<HotelBooking>('/hotels/bookings', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        companyId,
+      }),
+    getBooking: (bookingId: string, companyId = DEFAULT_COMPANY_ID) =>
+      apiFetch<HotelBooking>(`/hotels/bookings/${bookingId}`, { companyId }),
+    updateBooking: (
+      bookingId: string,
+      body: {
+        checkIn?: string;
+        checkOut?: string;
+        roomId?: string;
+        roomCount?: number;
+        guests?: HotelGuest[];
+      },
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<HotelBooking>(`/hotels/bookings/${bookingId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        companyId,
+      }),
+    cancelBooking: (
+      bookingId: string,
+      reason: string,
+      companyId = DEFAULT_COMPANY_ID,
+    ) =>
+      apiFetch<HotelBooking>(`/hotels/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        companyId,
+      }),
+    getDashboard: (companyId = DEFAULT_COMPANY_ID) =>
+      apiFetch<{
+        totalBookings: number;
+        activeBookings: number;
+        cancelledBookings: number;
+        totalRevenue: number;
+      }>('/hotels/dashboard', { companyId }),
   },
 
   accounting: {

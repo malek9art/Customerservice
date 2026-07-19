@@ -6,6 +6,9 @@ import {
   Customer,
   FlightBooking,
   FlightOffer,
+  HotelBooking,
+  HotelGuest,
+  HotelOffer,
   Passport,
   TravelOSApi,
   VisaApplication,
@@ -95,6 +98,12 @@ export default function OperationsDashboard() {
   const [flightOffers, setFlightOffers] = useState<FlightOffer[]>([]);
   const [selectedOfferId, setSelectedOfferId] = useState('');
   const [flightInsight, setFlightInsight] = useState('');
+  const [hotelOffers, setHotelOffers] = useState<HotelOffer[]>([]);
+  const [selectedHotelOfferId, setSelectedHotelOfferId] = useState('');
+  const [selectedHotelRoomId, setSelectedHotelRoomId] = useState('');
+  const [hotelInsight, setHotelInsight] = useState('');
+  const [editingHotelId, setEditingHotelId] = useState('');
+  const [hotelCancellationReason, setHotelCancellationReason] = useState('طلب إلغاء من العميل');
 
   const [customerForm, setCustomerForm] = useState({
     fullName: '',
@@ -132,6 +141,28 @@ export default function OperationsDashboard() {
     lastName: '',
     dateOfBirth: '',
     email: '',
+  });
+  const [hotelSearchForm, setHotelSearchForm] = useState({
+    city: 'Jeddah',
+    country: 'SA',
+    checkIn: '2026-09-10',
+    checkOut: '2026-09-15',
+    rooms: 1,
+    adults: 1,
+    children: 0,
+  });
+  const [hotelGuestForm, setHotelGuestForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+  });
+  const [hotelEditForm, setHotelEditForm] = useState({
+    checkIn: '',
+    checkOut: '',
+    roomId: '',
+    roomCount: 1,
+    adults: 1,
+    children: 0,
   });
 
   const showError = (error: unknown) => {
@@ -220,6 +251,11 @@ export default function OperationsDashboard() {
         lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
         email: created.email || '',
       }));
+      setHotelGuestForm({
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
+        email: created.email || '',
+      });
       setNotice({ type: 'success', text: `تم إنشاء ملف العميل ${created.fullName} واختياره للعمل.` });
       setCustomerForm({ fullName: '', phone: '', email: '', nationality: 'YE' });
     });
@@ -243,6 +279,11 @@ export default function OperationsDashboard() {
         lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
         email: customer.email || '',
       }));
+      setHotelGuestForm({
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
+        email: customer.email || '',
+      });
       setVisaResult(null);
     });
   };
@@ -372,6 +413,114 @@ export default function OperationsDashboard() {
     });
   };
 
+  const buildHotelGuests = (
+    adults: number,
+    children: number,
+    existing: HotelGuest[] = [],
+  ): HotelGuest[] => {
+    const existingAdults = existing.filter((guest) => guest.type === 'ADULT');
+    const existingChildren = existing.filter((guest) => guest.type === 'CHILD');
+    const adultGuests = Array.from({ length: adults }, (_, index): HotelGuest =>
+      existingAdults[index] || {
+        firstName: index === 0 ? hotelGuestForm.firstName.trim() : `Guest${index + 1}`,
+        lastName: index === 0 ? hotelGuestForm.lastName.trim() : hotelGuestForm.lastName.trim(),
+        email: index === 0 ? hotelGuestForm.email.trim() || undefined : undefined,
+        type: 'ADULT',
+      },
+    );
+    const childGuests = Array.from({ length: children }, (_, index): HotelGuest =>
+      existingChildren[index] || {
+        firstName: `Child${index + 1}`,
+        lastName: hotelGuestForm.lastName.trim(),
+        type: 'CHILD',
+      },
+    );
+    return [...adultGuests, ...childGuests];
+  };
+
+  const searchHotels = (event: FormEvent) => {
+    event.preventDefault();
+    void runTask('search-hotels', async () => {
+      const result = await TravelOSApi.hotels.search({
+        ...hotelSearchForm,
+        country: hotelSearchForm.country.trim().toUpperCase(),
+        city: hotelSearchForm.city.trim(),
+      });
+      setHotelOffers(result.offers);
+      setHotelInsight(result.aiInsights);
+      const firstOffer = result.offers[0];
+      setSelectedHotelOfferId(firstOffer?.id || '');
+      setSelectedHotelRoomId(firstOffer?.rooms[0]?.id || '');
+      setNotice({ type: 'success', text: `تم العثور على ${result.offers.length} فنادق متاحة.` });
+    });
+  };
+
+  const createHotelBooking = (offer: HotelOffer, roomId: string) => {
+    if (!selectedCustomer) return;
+    void runTask('book-hotel', async () => {
+      const booking = await TravelOSApi.hotels.createBooking({
+        customerId: selectedCustomer.id,
+        provider: offer.provider,
+        offerId: offer.id,
+        roomId,
+        guests: buildHotelGuests(hotelSearchForm.adults, hotelSearchForm.children),
+      });
+      setSelectedHotelOfferId(offer.id);
+      setSelectedHotelRoomId(roomId);
+      await refreshCustomer(selectedCustomer.id);
+      setNotice({
+        type: 'success',
+        text: `تم إنشاء حجز الفندق ${booking.referenceNumber} وتأكيده برقم ${booking.hotelConfirmationNumber}.`,
+      });
+    });
+  };
+
+  const beginHotelEdit = (booking: HotelBooking) => {
+    setEditingHotelId(booking.id);
+    setHotelEditForm({
+      checkIn: new Date(booking.checkIn).toISOString().slice(0, 10),
+      checkOut: new Date(booking.checkOut).toISOString().slice(0, 10),
+      roomId: booking.roomDetails.selectedRoom.id,
+      roomCount: booking.roomDetails.roomCount,
+      adults: booking.guests.filter((guest) => guest.type === 'ADULT').length,
+      children: booking.guests.filter((guest) => guest.type === 'CHILD').length,
+    });
+  };
+
+  const updateHotelBooking = (event: FormEvent, booking: HotelBooking) => {
+    event.preventDefault();
+    if (!selectedCustomer) return;
+    void runTask(`update-hotel-${booking.id}`, async () => {
+      await TravelOSApi.hotels.updateBooking(booking.id, {
+        checkIn: hotelEditForm.checkIn,
+        checkOut: hotelEditForm.checkOut,
+        roomId: hotelEditForm.roomId,
+        roomCount: hotelEditForm.roomCount,
+        guests: buildHotelGuests(
+          hotelEditForm.adults,
+          hotelEditForm.children,
+          booking.guests,
+        ),
+      });
+      await refreshCustomer(selectedCustomer.id);
+      setEditingHotelId('');
+      setNotice({ type: 'success', text: `تم تعديل حجز الفندق ${booking.referenceNumber}.` });
+    });
+  };
+
+  const cancelHotelBooking = (booking: HotelBooking) => {
+    if (!selectedCustomer || !hotelCancellationReason.trim()) return;
+    void runTask(`cancel-hotel-${booking.id}`, async () => {
+      await TravelOSApi.hotels.cancelBooking(
+        booking.id,
+        hotelCancellationReason.trim(),
+      );
+      await refreshCustomer(selectedCustomer.id);
+      setEditingHotelId('');
+      setNotice({ type: 'success', text: `تم إلغاء حجز الفندق ${booking.referenceNumber}.` });
+    });
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl space-y-6">
@@ -483,6 +632,7 @@ export default function OperationsDashboard() {
                       <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">{customerPassports.length} جواز</span>
                       <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sky-700">{selectedCustomer.visas?.length || 0} تأشيرة</span>
                       <span className="rounded-full bg-violet-50 px-3 py-1.5 text-violet-700">{selectedCustomer.flightBookings?.length || 0} رحلة</span>
+                      <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">{selectedCustomer.hotelBookings?.length || 0} فندق</span>
                     </div>
                   </div>
                   {selectedCustomer.aiInsights && (
@@ -720,6 +870,183 @@ export default function OperationsDashboard() {
                         </article>
                       ))}
                       {!selectedCustomer.flightBookings?.length && <p className="text-sm text-slate-400">لا توجد حجوزات طيران مرتبطة بهذا العميل.</p>}
+                    </div>
+                  </div>
+                </Panel>
+
+                <Panel title="عمليات الفنادق" description="ابحث عن الإقامة، اختر الغرفة، ثم أدِر الحجز من ملف Customer 360.">
+                  <form onSubmit={searchHotels} className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Field label="المدينة *">
+                      <input required className={inputClass} value={hotelSearchForm.city} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, city: e.target.value })} />
+                    </Field>
+                    <Field label="الدولة *">
+                      <input required minLength={2} maxLength={2} className={inputClass} value={hotelSearchForm.country} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, country: e.target.value })} dir="ltr" />
+                    </Field>
+                    <Field label="تاريخ الدخول *">
+                      <input required type="date" className={inputClass} value={hotelSearchForm.checkIn} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, checkIn: e.target.value })} />
+                    </Field>
+                    <Field label="تاريخ الخروج *">
+                      <input required type="date" className={inputClass} value={hotelSearchForm.checkOut} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, checkOut: e.target.value })} />
+                    </Field>
+                    <Field label="الغرف">
+                      <input type="number" min={1} className={inputClass} value={hotelSearchForm.rooms} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, rooms: Number(e.target.value) })} />
+                    </Field>
+                    <Field label="البالغون">
+                      <input type="number" min={1} className={inputClass} value={hotelSearchForm.adults} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, adults: Number(e.target.value) })} />
+                    </Field>
+                    <Field label="الأطفال">
+                      <input type="number" min={0} className={inputClass} value={hotelSearchForm.children} onChange={(e) => setHotelSearchForm({ ...hotelSearchForm, children: Number(e.target.value) })} />
+                    </Field>
+                    <div className="flex items-end">
+                      <button disabled={busy !== null} className={`${primaryButton} w-full`}>
+                        {busy === 'search-hotels' ? 'جاري البحث...' : 'البحث عن الفنادق'}
+                      </button>
+                    </div>
+                  </form>
+
+                  {hotelOffers.length > 0 && (
+                    <div className="mt-5 space-y-5 border-t border-slate-100 pt-5">
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900">بيانات النزيل الرئيسي</h3>
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <Field label="الاسم الأول *">
+                            <input required className={inputClass} value={hotelGuestForm.firstName} onChange={(e) => setHotelGuestForm({ ...hotelGuestForm, firstName: e.target.value })} />
+                          </Field>
+                          <Field label="اسم العائلة *">
+                            <input required className={inputClass} value={hotelGuestForm.lastName} onChange={(e) => setHotelGuestForm({ ...hotelGuestForm, lastName: e.target.value })} />
+                          </Field>
+                          <Field label="البريد الإلكتروني">
+                            <input type="email" className={inputClass} value={hotelGuestForm.email} onChange={(e) => setHotelGuestForm({ ...hotelGuestForm, email: e.target.value })} dir="ltr" />
+                          </Field>
+                        </div>
+                      </div>
+
+                      {hotelInsight && <p className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs leading-6 text-indigo-900">{hotelInsight}</p>}
+
+                      <div className="space-y-4">
+                        {hotelOffers.map((offer) => {
+                          const activeRoomId = selectedHotelOfferId === offer.id
+                            ? selectedHotelRoomId
+                            : offer.rooms[0]?.id || '';
+                          const activeRoom = offer.rooms.find((room) => room.id === activeRoomId) || offer.rooms[0];
+                          const nights = Math.ceil((new Date(offer.checkOut).getTime() - new Date(offer.checkIn).getTime()) / 86_400_000);
+                          const total = (activeRoom?.pricePerNight || 0) * nights * offer.requestedRooms;
+                          return (
+                            <article key={offer.id} className={`overflow-hidden rounded-2xl border ${selectedHotelOfferId === offer.id ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+                              <div className="grid md:grid-cols-[220px_1fr]">
+                                <div className="grid min-h-48 grid-cols-2 gap-1 bg-slate-100 p-1 md:grid-cols-1">
+                                  {offer.images.slice(0, 2).map((image, index) => (
+                                    <div key={image} role="img" aria-label={`${offer.hotelName} ${index + 1}`} className="min-h-24 bg-cover bg-center" style={{ backgroundImage: `url(${image})` }} />
+                                  ))}
+                                </div>
+                                <div className="space-y-4 p-5">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <div className="mb-1 text-amber-500" aria-label={`${offer.stars} stars`}>{'★'.repeat(offer.stars)}</div>
+                                      <h3 className="text-lg font-black text-slate-950">{offer.hotelName}</h3>
+                                      <p className="mt-1 text-xs text-slate-500">{offer.location.address} · {offer.location.city}, {offer.location.country}</p>
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="text-2xl font-black text-indigo-700">{total} {offer.totalPrice.currency}</p>
+                                      <p className="text-xs text-slate-400">{nights} ليالٍ · {offer.requestedRooms} غرفة</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {offer.amenities.map((amenity) => <span key={amenity} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{amenity}</span>)}
+                                  </div>
+                                  <p className="text-xs font-bold text-emerald-700">سياسة الإلغاء: {offer.cancellationPolicy}</p>
+                                  <div className="grid items-end gap-3 md:grid-cols-[1fr_auto]">
+                                    <Field label="نوع الغرفة">
+                                      <select className={inputClass} value={activeRoomId} onChange={(e) => { setSelectedHotelOfferId(offer.id); setSelectedHotelRoomId(e.target.value); }}>
+                                        {offer.rooms.map((room) => <option key={room.id} value={room.id}>{room.type} · {room.bedType} · {room.mealPlan} · {room.pricePerNight} USD/ليلة</option>)}
+                                      </select>
+                                    </Field>
+                                    <button
+                                      type="button"
+                                      disabled={busy !== null || !activeRoomId || !hotelGuestForm.firstName.trim() || !hotelGuestForm.lastName.trim()}
+                                      onClick={() => createHotelBooking(offer, activeRoomId)}
+                                      className={primaryButton}
+                                    >
+                                      {busy === 'book-hotel' && selectedHotelOfferId === offer.id ? 'جاري التأكيد...' : 'اختيار وحجز الغرفة'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 border-t border-slate-100 pt-5">
+                    <h3 className="mb-3 text-sm font-black text-slate-900">فنادق العميل في Customer 360</h3>
+                    <div className="space-y-4">
+                      {selectedCustomer.hotelBookings?.map((booking) => (
+                        <article key={booking.id} className="overflow-hidden rounded-2xl border border-slate-200">
+                          <div className="grid md:grid-cols-[180px_1fr]">
+                            <div role="img" aria-label={booking.hotelName} className="min-h-40 bg-slate-200 bg-cover bg-center" style={{ backgroundImage: booking.hotelImages?.[0] ? `url(${booking.hotelImages[0]})` : undefined }} />
+                            <div className="p-5">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-amber-500">{'★'.repeat(booking.stars || 0)}</div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                                    <h4 className="font-black text-slate-950">{booking.hotelName}</h4>
+                                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${booking.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{booking.status === 'CANCELLED' ? 'ملغي' : 'مؤكد'}</span>
+                                  </div>
+                                  <p className="mt-1 text-xs text-slate-500">{booking.referenceNumber} · تأكيد {booking.hotelConfirmationNumber}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{new Date(booking.checkIn).toLocaleDateString('ar')} — {new Date(booking.checkOut).toLocaleDateString('ar')}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{booking.roomDetails.selectedRoom.type} · {booking.roomDetails.roomCount} غرفة · {booking.guests.length} نزيل</p>
+                                </div>
+                                <p className="text-lg font-black text-indigo-700">{String(booking.totalAmount)} {booking.currency}</p>
+                              </div>
+
+                              {booking.status !== 'CANCELLED' && editingHotelId !== booking.id && (
+                                <div className="mt-4 flex gap-2">
+                                  <button type="button" onClick={() => beginHotelEdit(booking)} className={primaryButton}>تعديل الحجز</button>
+                                  <button type="button" disabled={busy !== null || !hotelCancellationReason.trim()} onClick={() => cancelHotelBooking(booking)} className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-extrabold text-rose-700 hover:bg-rose-100 disabled:opacity-50">إلغاء الحجز</button>
+                                </div>
+                              )}
+
+                              {editingHotelId === booking.id && booking.status !== 'CANCELLED' && (
+                                <form onSubmit={(event) => updateHotelBooking(event, booking)} className="mt-5 space-y-4 rounded-xl bg-slate-50 p-4">
+                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                    <Field label="الدخول">
+                                      <input required type="date" className={inputClass} value={hotelEditForm.checkIn} onChange={(e) => setHotelEditForm({ ...hotelEditForm, checkIn: e.target.value })} />
+                                    </Field>
+                                    <Field label="الخروج">
+                                      <input required type="date" className={inputClass} value={hotelEditForm.checkOut} onChange={(e) => setHotelEditForm({ ...hotelEditForm, checkOut: e.target.value })} />
+                                    </Field>
+                                    <Field label="الغرفة">
+                                      <select className={inputClass} value={hotelEditForm.roomId} onChange={(e) => setHotelEditForm({ ...hotelEditForm, roomId: e.target.value })}>
+                                        {booking.roomDetails.availableRooms.map((room) => <option key={room.id} value={room.id}>{room.type} · {room.pricePerNight} USD</option>)}
+                                      </select>
+                                    </Field>
+                                    <Field label="عدد الغرف">
+                                      <input type="number" min={1} className={inputClass} value={hotelEditForm.roomCount} onChange={(e) => setHotelEditForm({ ...hotelEditForm, roomCount: Number(e.target.value) })} />
+                                    </Field>
+                                    <Field label="البالغون">
+                                      <input type="number" min={1} className={inputClass} value={hotelEditForm.adults} onChange={(e) => setHotelEditForm({ ...hotelEditForm, adults: Number(e.target.value) })} />
+                                    </Field>
+                                    <Field label="الأطفال">
+                                      <input type="number" min={0} className={inputClass} value={hotelEditForm.children} onChange={(e) => setHotelEditForm({ ...hotelEditForm, children: Number(e.target.value) })} />
+                                    </Field>
+                                  </div>
+                                  <Field label="سبب الإلغاء عند الحاجة">
+                                    <input className={inputClass} value={hotelCancellationReason} onChange={(e) => setHotelCancellationReason(e.target.value)} />
+                                  </Field>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button disabled={busy !== null} className={primaryButton}>{busy === `update-hotel-${booking.id}` ? 'جاري الحفظ...' : 'حفظ التعديلات'}</button>
+                                    <button type="button" onClick={() => setEditingHotelId('')} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-600">إغلاق التفاصيل</button>
+                                    <button type="button" disabled={busy !== null || !hotelCancellationReason.trim()} onClick={() => cancelHotelBooking(booking)} className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-extrabold text-rose-700">إلغاء الحجز</button>
+                                  </div>
+                                </form>
+                              )}
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                      {!selectedCustomer.hotelBookings?.length && <p className="text-sm text-slate-400">لا توجد حجوزات فنادق مرتبطة بهذا العميل.</p>}
                     </div>
                   </div>
                 </Panel>

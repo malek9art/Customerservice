@@ -222,6 +222,11 @@ model HotelBooking {
   
   hotelId          String
   hotelName        String
+  hotelImages      String[]       @default([])
+  stars            Int?
+  location         Json?
+  amenities        String[]       @default([])
+  cancellationPolicy String?
   roomDetails      Json           // Room type, count, etc.
   checkIn          DateTime
   checkOut         DateTime
@@ -232,6 +237,8 @@ model HotelBooking {
   guests           Json           // Guest list
   mealPlan         String?
   transfers        Json?
+  cancellationReason String?
+  cancelledAt      DateTime?
   
   packageId        String?        // Link to a Package if part of one
   
