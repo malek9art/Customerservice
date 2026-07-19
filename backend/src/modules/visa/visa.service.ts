@@ -19,10 +19,7 @@ export class VisaService {
     private audit: AuditService,
   ) {}
 
-  async createApplication(
-    companyId: string,
-    data: CreateVisaApplicationDto,
-  ) {
+  async createApplication(companyId: string, data: CreateVisaApplicationDto) {
     const customer = await (this.prisma as any).customer.findUnique({
       where: { id: data.customerId },
     });
@@ -104,6 +101,7 @@ export class VisaService {
   }
 
   async updateStatus(
+    companyId: string,
     id: string,
     status: string,
     actorId: string,
@@ -112,7 +110,12 @@ export class VisaService {
     const application = await (this.prisma as any).visaRecord.findUnique({
       where: { id },
     });
-    if (!application) {
+    const customer = application
+      ? await (this.prisma as any).customer.findUnique({
+          where: { id: application.customerId },
+        })
+      : null;
+    if (!application || !customer || customer.companyId !== companyId) {
       throw new NotFoundException('Visa application not found');
     }
 

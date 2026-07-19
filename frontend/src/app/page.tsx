@@ -5,7 +5,6 @@ import { AppShell } from '@/components/app-shell';
 import { TravelOSApi } from '@/lib/api-client';
 
 export default function ExecutiveDashboard() {
-  const [loading, setLoading] = useState(true);
   const [finStats, setFinStats] = useState<any>(null);
   const [pilgrimStats, setPilgrimStats] = useState<any>(null);
   const [flightStats, setFlightStats] = useState<any>(null);
@@ -23,8 +22,6 @@ export default function ExecutiveDashboard() {
         setFlightStats(flight);
       } catch (err) {
         console.error('Error loading dashboard stats', err);
-      } finally {
-        setLoading(false);
       }
     }
     loadStats();

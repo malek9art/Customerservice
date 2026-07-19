@@ -14,13 +14,11 @@ export default function FlightOperationsPage() {
   const [selectedOffer, setSelectedOffer] = useState<any>(null);
   const [fareRules, setFareRules] = useState<any>(null);
   const [booking, setBooking] = useState<any>(null);
-  const [ticketResult, setTicketResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSearch = async () => {
     setLoading(true);
     setBooking(null);
-    setTicketResult(null);
     try {
       const res = await TravelOSApi.flights.search({
         origin,
@@ -30,7 +28,7 @@ export default function FlightOperationsPage() {
         cabinClass,
       });
       setOffers(res.offers || []);
-    } catch (err) {
+    } catch {
       // Direct offline preview
       setOffers([
         {
@@ -63,7 +61,7 @@ export default function FlightOperationsPage() {
         departureDate,
       });
       setFareRules(rules);
-    } catch (err) {
+    } catch {
       setFareRules({
         airlineCode: offer.validatingAirline,
         baggageAllowance: { pieces: 2, maxWeightKg: 23, description: 'حقيبتان وزن 23 كجم لكل منهما' },
@@ -84,7 +82,7 @@ export default function FlightOperationsPage() {
         passengers: [{ firstName: 'MALEK', lastName: 'AHMED' }],
       });
       setBooking(res);
-    } catch (err) {
+    } catch {
       setBooking({ id: 'f-book-999', pnr: 'AMD8X9A', status: 'PNR_CREATED', totalAmount: selectedOffer.price.total });
     } finally {
       setLoading(false);
@@ -96,10 +94,8 @@ export default function FlightOperationsPage() {
     setLoading(true);
     try {
       const res = await TravelOSApi.flights.issueTicket(booking.id);
-      setTicketResult(res);
       setBooking((prev: any) => ({ ...prev, status: 'TICKETED', ticketNumbers: res.ticketNumbers }));
-    } catch (err) {
-      setTicketResult({ success: true, ticketNumbers: ['157-9823410291'] });
+    } catch {
       setBooking((prev: any) => ({ ...prev, status: 'TICKETED', ticketNumbers: ['157-9823410291'] }));
     } finally {
       setLoading(false);
@@ -272,7 +268,7 @@ export default function FlightOperationsPage() {
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">اختر رحلة واضغط "فحص قواعد السعر والأمتعة" للبدء</p>
+                <p className="text-xs text-slate-400">اختر رحلة واضغط &quot;فحص قواعد السعر والأمتعة&quot; للبدء</p>
               )}
             </div>
           </div>

@@ -7,6 +7,7 @@ import {
   Query,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiHeader } from '@nestjs/swagger';
@@ -53,6 +54,7 @@ export class CustomersController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    if (!file) throw new BadRequestException('Passport file is required');
     return this.customersService.uploadPassport(
       companyId,
       id,

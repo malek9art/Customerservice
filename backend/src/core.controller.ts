@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { BreService } from './modules/bre/bre.service';
 import { AiOrchestrator } from './modules/ai/ai-orchestrator.service';
 import { CurrentCompany } from './common/decorators/current-company.decorator';
+import { AiChatDto, EvaluateRuleDto } from './common/dto/core.dto';
 
 @ApiTags('Core Foundation')
 @Controller('core')
@@ -17,7 +18,7 @@ export class CoreController {
   @ApiHeader({ name: 'x-company-id', required: true })
   async evaluateRule(
     @CurrentCompany() companyId: string,
-    @Body() body: { type: string; data: any },
+    @Body() body: EvaluateRuleDto,
   ) {
     return this.bre.evaluate(companyId, body.type, body.data);
   }
@@ -25,10 +26,7 @@ export class CoreController {
   @Post('ai-chat')
   @ApiOperation({ summary: 'Process AI chat message' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async aiChat(
-    @CurrentCompany() companyId: string,
-    @Body() body: { message: string },
-  ) {
+  async aiChat(@CurrentCompany() companyId: string, @Body() body: AiChatDto) {
     return this.ai.process(body.message, { companyId });
   }
 

@@ -10,7 +10,10 @@ import { FlightSearchCriteria } from './interfaces/flight-provider.interface';
 import { AiOrchestrator } from '../ai/ai-orchestrator.service';
 import { BreService } from '../bre/bre.service';
 import { WorkflowService } from '../workflows/workflows.service';
-import { FareRulesEvaluatorService, EvaluationRequest } from './fare-rules-evaluator.service';
+import {
+  FareRulesEvaluatorService,
+  EvaluationRequest,
+} from './fare-rules-evaluator.service';
 import { nanoid } from 'nanoid';
 
 @Injectable()

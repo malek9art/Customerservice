@@ -2,6 +2,7 @@ import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { VisaService } from './visa.service';
 import { CreateVisaApplicationDto } from './dto/create-visa-application.dto';
+import { UpdateVisaStatusDto } from './dto/update-visa-status.dto';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
 @ApiTags('Visa Operations')
@@ -29,8 +30,13 @@ export class VisaController {
   @Patch('applications/:id/status')
   @ApiOperation({ summary: 'Update visa application status' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async updateStatus(@Param('id') id: string, @Body() body: any) {
+  async updateStatus(
+    @CurrentCompany() companyId: string,
+    @Param('id') id: string,
+    @Body() body: UpdateVisaStatusDto,
+  ) {
     return this.visaService.updateStatus(
+      companyId,
       id,
       body.status,
       body.actorId,

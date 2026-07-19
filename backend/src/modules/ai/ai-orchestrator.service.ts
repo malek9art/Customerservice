@@ -9,7 +9,13 @@ import { nanoid } from 'nanoid';
 export interface ActionChainStep {
   stepId: string;
   stepName: string;
-  targetAgent: 'SUPERVISOR' | 'PILGRIMAGE_AGENT' | 'FLIGHT_AGENT' | 'FINANCE_AGENT' | 'OCR_AGENT' | 'VERIFIER';
+  targetAgent:
+    | 'SUPERVISOR'
+    | 'PILGRIMAGE_AGENT'
+    | 'FLIGHT_AGENT'
+    | 'FINANCE_AGENT'
+    | 'OCR_AGENT'
+    | 'VERIFIER';
   action: string;
   input: any;
   output?: any;
@@ -68,10 +74,15 @@ export class AiOrchestrator {
     context: any = {},
   ): Promise<ActionChainExecutionResult> {
     const chainId = `CHAIN-${nanoid(10).toUpperCase()}`;
-    this.logger.log(`Executing Stateful Action Chain [${chainId}] for prompt: "${prompt}"`);
+    this.logger.log(
+      `Executing Stateful Action Chain [${chainId}] for prompt: "${prompt}"`,
+    );
 
     // 0. Check Semantic Cache
-    const cachedResponse = this.memoryService.getCachedResponse(prompt, companyId);
+    const cachedResponse = this.memoryService.getCachedResponse(
+      prompt,
+      companyId,
+    );
     if (cachedResponse) {
       return {
         ...cachedResponse,
@@ -102,10 +113,15 @@ export class AiOrchestrator {
 
     for (const step of plan) {
       step.status = 'RUNNING';
-      this.logger.log(`Executing Step [${step.stepId}]: ${step.stepName} (${step.action})`);
+      this.logger.log(
+        `Executing Step [${step.stepId}]: ${step.stepName} (${step.action})`,
+      );
 
       try {
-        const stepInput = { ...step.input, previousOutputs: Object.fromEntries(outputsMap) };
+        const stepInput = {
+          ...step.input,
+          previousOutputs: Object.fromEntries(outputsMap),
+        };
 
         let stepOutput: any;
         switch (step.action) {
@@ -187,7 +203,10 @@ export class AiOrchestrator {
       : `Request processing required human supervisor verification for goal: "${prompt}".`;
 
     // Calculate Token Metrics
-    const tokenMetrics = this.memoryService.calculateTokens(prompt, finalResponse);
+    const tokenMetrics = this.memoryService.calculateTokens(
+      prompt,
+      finalResponse,
+    );
 
     const resultResult: ActionChainExecutionResult = {
       chainId,
@@ -218,7 +237,12 @@ export class AiOrchestrator {
   ): Promise<ActionChainStep[]> {
     const lower = prompt.toLowerCase();
 
-    if (lower.includes('hajj') || lower.includes('umrah') || lower.includes('package') || lower.includes('pilgrim')) {
+    if (
+      lower.includes('hajj') ||
+      lower.includes('umrah') ||
+      lower.includes('package') ||
+      lower.includes('pilgrim')
+    ) {
       return [
         {
           stepId: 'step-1',
@@ -257,7 +281,11 @@ export class AiOrchestrator {
           confidenceScore: 0.97,
         },
       ];
-    } else if (lower.includes('flight') || lower.includes('ticket') || lower.includes('pnr')) {
+    } else if (
+      lower.includes('flight') ||
+      lower.includes('ticket') ||
+      lower.includes('pnr')
+    ) {
       return [
         {
           stepId: 'step-1',

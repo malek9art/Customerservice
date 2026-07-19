@@ -77,12 +77,16 @@ export class CustomersService {
       invoices,
       payments,
     ] = await Promise.all([
-      (this.prisma as any).passportInventory.findMany({ where: { customerId } }),
+      (this.prisma as any).passportInventory.findMany({
+        where: { customerId },
+      }),
       (this.prisma as any).nationalIdentity.findMany({ where: { customerId } }),
       (this.prisma as any).familyMember.findMany({ where: { customerId } }),
       (this.prisma as any).flightBooking.findMany({ where: { customerId } }),
       (this.prisma as any).hotelBooking.findMany({ where: { customerId } }),
-      (this.prisma as any).pilgrimageBooking.findMany({ where: { customerId } }),
+      (this.prisma as any).pilgrimageBooking.findMany({
+        where: { customerId },
+      }),
       (this.prisma as any).visaRecord.findMany({ where: { customerId } }),
       (this.prisma as any).transaction.findMany({ where: { customerId } }),
       (this.prisma as any).document.findMany({ where: { customerId } }),
@@ -91,15 +95,23 @@ export class CustomersService {
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
-      (this.prisma as any).invoice.findMany({ where: { companyId, customerId } }),
-      (this.prisma as any).payment.findMany({ where: { companyId, customerId } }),
+      (this.prisma as any).invoice.findMany({
+        where: { companyId, customerId },
+      }),
+      (this.prisma as any).payment.findMany({
+        where: { companyId, customerId },
+      }),
     ]);
 
     const pilgrimageBookingsWithDetails = await Promise.all(
       pilgrimageBookings.map(async (booking: any) => ({
         ...booking,
-        package: await (this.prisma as any).package.findUnique({ where: { id: booking.packageId } }),
-        pilgrims: await (this.prisma as any).pilgrim.findMany({ where: { bookingId: booking.id } }),
+        package: await (this.prisma as any).package.findUnique({
+          where: { id: booking.packageId },
+        }),
+        pilgrims: await (this.prisma as any).pilgrim.findMany({
+          where: { bookingId: booking.id },
+        }),
       })),
     );
     const interests = Array.isArray(customer.interests)
@@ -126,9 +138,18 @@ export class CustomersService {
       invoices,
       payments,
       financialSummary: {
-        invoiced: invoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount), 0),
-        paid: payments.reduce((sum: number, payment: any) => sum + Number(payment.amount), 0),
-        outstanding: invoices.reduce((sum: number, invoice: any) => sum + Number(invoice.balance), 0),
+        invoiced: invoices.reduce(
+          (sum: number, invoice: any) => sum + Number(invoice.amount),
+          0,
+        ),
+        paid: payments.reduce(
+          (sum: number, payment: any) => sum + Number(payment.amount),
+          0,
+        ),
+        outstanding: invoices.reduce(
+          (sum: number, invoice: any) => sum + Number(invoice.balance),
+          0,
+        ),
       },
       aiInsights: {
         summary: aiSummary.response,

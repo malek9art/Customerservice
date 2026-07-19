@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SaasService } from './saas.service';
+import { ProvisionTenantDto } from './dto/provision-tenant.dto';
 
 @ApiTags('SaaS Management & Provisioning')
 @Controller('saas')
@@ -9,7 +10,7 @@ export class SaasController {
 
   @Post('provision')
   @ApiOperation({ summary: 'Onboard a new travel agency tenant' })
-  async onboard(@Body() data: any) {
+  async onboard(@Body() data: ProvisionTenantDto) {
     return this.saasService.onBoardTenant(data);
   }
 

@@ -24,8 +24,11 @@ describe('TravelOS AI V1.0 Beta Real Operations & Lifecycle Scenarios', () => {
     await app.init();
 
     pilgrimageService = moduleFixture.get<PilgrimageService>(PilgrimageService);
-    flightService = moduleFixture.get<FlightBookingService>(FlightBookingService);
-    passportService = moduleFixture.get<PassportProcessingService>(PassportProcessingService);
+    flightService =
+      moduleFixture.get<FlightBookingService>(FlightBookingService);
+    passportService = moduleFixture.get<PassportProcessingService>(
+      PassportProcessingService,
+    );
     workflowService = moduleFixture.get<WorkflowService>(WorkflowService);
     prisma = moduleFixture.get<PrismaService>(PrismaService);
   });
@@ -63,7 +66,9 @@ describe('TravelOS AI V1.0 Beta Real Operations & Lifecycle Scenarios', () => {
     expect(bookingRes.booking.status).toBe('CONFIRMED');
 
     // Verify remaining slots = 8
-    let currentPkg = await (prisma as any).package.findUnique({ where: { id: pkg.id } });
+    let currentPkg = await (prisma as any).package.findUnique({
+      where: { id: pkg.id },
+    });
     expect(currentPkg.remainingSlots).toBe(8);
 
     // 3. Modify booking details
@@ -85,7 +90,9 @@ describe('TravelOS AI V1.0 Beta Real Operations & Lifecycle Scenarios', () => {
     expect(cancelRes.slotsRestored).toBe(2);
 
     // Verify slots restored in package
-    currentPkg = await (prisma as any).package.findUnique({ where: { id: pkg.id } });
+    currentPkg = await (prisma as any).package.findUnique({
+      where: { id: pkg.id },
+    });
     expect(currentPkg.remainingSlots).toBe(10);
   });
 
@@ -109,7 +116,11 @@ describe('TravelOS AI V1.0 Beta Real Operations & Lifecycle Scenarios', () => {
     expect(ticketed.status).toBe('TICKETED');
 
     // 3. Cancel Flight Booking
-    const cancelled = await flightService.cancelBooking(companyId, booking.id, 'Flight schedule change');
+    const cancelled = await flightService.cancelBooking(
+      companyId,
+      booking.id,
+      'Flight schedule change',
+    );
     expect(cancelled.status).toBe('CANCELLED');
   });
 
@@ -162,7 +173,8 @@ describe('TravelOS AI V1.0 Beta Real Operations & Lifecycle Scenarios', () => {
       companyId,
       sessionId: session.id,
       customerId: 'cust-1',
-      reason: 'Customer requested live human supervisor for complex group discount query',
+      reason:
+        'Customer requested live human supervisor for complex group discount query',
     });
 
     const updatedSession = await (prisma as any).chatSession.findUnique({

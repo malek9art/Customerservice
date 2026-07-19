@@ -10,7 +10,6 @@ import { AuditService } from './modules/audit/audit.service';
 import { AiOrchestrator } from './modules/ai/ai-orchestrator.service';
 import { IamService } from './modules/iam/iam.service';
 import { WhatsappService } from './modules/whatsapp/whatsapp.service';
-import { NotificationService } from './modules/notifications/notification.service';
 
 import { CoreController } from './core.controller';
 
@@ -19,7 +18,6 @@ import { OcrService } from './modules/ocr/ocr.service';
 import { CacheService } from './modules/cache/cache.service';
 import { AiMemoryService } from './modules/ai/memory/ai-memory.service';
 import { AiToolRegistry } from './modules/ai/tools/ai-tool-registry.service';
-import { IntegrationFramework } from './modules/integrations/integration-framework.service';
 
 import { CustomersModule } from './modules/customers/customers.module';
 
@@ -76,13 +74,11 @@ import { AiWhatsappController } from './modules/ai/ai-whatsapp.controller';
     AiAgentService,
     IamService,
     WhatsappService,
-    NotificationService,
     StorageService,
     OcrService,
     CacheService,
     AiMemoryService,
     AiToolRegistry,
-    IntegrationFramework,
   ],
   exports: [
     PrismaService,
@@ -94,13 +90,11 @@ import { AiWhatsappController } from './modules/ai/ai-whatsapp.controller';
     AiAgentService,
     IamService,
     WhatsappService,
-    NotificationService,
     StorageService,
     OcrService,
     CacheService,
     AiMemoryService,
     AiToolRegistry,
-    IntegrationFramework,
   ],
 })
 export class AppModule {}

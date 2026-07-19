@@ -22,7 +22,7 @@ export default function PilgrimageOperationsPage() {
         options: { maxRoomCapacity: 4, groupFamilies: true, separateByGender: true },
       });
       setRoomResult(res);
-    } catch (err: any) {
+    } catch {
       // Fallback preview
       setRoomResult({
         summary: { totalPilgrims: 12, totalRooms: 3, occupancyRate: 100 },
@@ -44,7 +44,7 @@ export default function PilgrimageOperationsPage() {
         options: { busCapacity: 45, keepBookingsTogether: true },
       });
       setBusResult(res);
-    } catch (err: any) {
+    } catch {
       setBusResult({
         summary: { totalPilgrims: 42, totalBuses: 1, capacityUtilization: 93.3 },
         buses: [
@@ -61,7 +61,7 @@ export default function PilgrimageOperationsPage() {
     try {
       const res = await TravelOSApi.pilgrimage.syncCapacity(packageId);
       setCapacityResult(res);
-    } catch (err) {
+    } catch {
       setCapacityResult({ packageId, capacity: 50, bookedSlots: 32, remainingSlots: 18, isAvailable: true, updatedAt: new Date().toISOString() });
     } finally {
       setLoading(false);
@@ -73,7 +73,7 @@ export default function PilgrimageOperationsPage() {
     try {
       const res = await TravelOSApi.pilgrimage.generatePilgrimCard(pilgrimId);
       setCardResult(res);
-    } catch (err) {
+    } catch {
       setCardResult({ pilgrimId, cardUrl: 'https://storage.travelos.ai/comp-id/public/pilgrim-card-001.pdf', generatedAt: new Date().toISOString() });
     } finally {
       setLoading(false);

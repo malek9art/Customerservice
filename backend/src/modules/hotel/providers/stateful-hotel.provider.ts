@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import {
   HotelOffer,
@@ -12,15 +16,18 @@ import {
 export class StatefulHotelProvider implements IHotelProvider {
   readonly name = 'TRAVELOS_HOTELS';
   private readonly offers = new Map<string, HotelOffer>();
-  private readonly activeConfirmations = new Set<string>();
+  private readonly maxCachedOffers = 500;
 
   async search(criteria: HotelSearchCriteria): Promise<HotelOffer[]> {
     const nights = Math.ceil(
-      (new Date(criteria.checkOut).getTime() - new Date(criteria.checkIn).getTime()) /
+      (new Date(criteria.checkOut).getTime() -
+        new Date(criteria.checkIn).getTime()) /
         86_400_000,
     );
     if (nights < 1) {
-      throw new BadRequestException('Check-out date must be after check-in date');
+      throw new BadRequestException(
+        'Check-out date must be after check-in date',
+      );
     }
 
     const cityKey = criteria.city.trim().toUpperCase().replace(/\s+/g, '-');
@@ -31,7 +38,13 @@ export class StatefulHotelProvider implements IHotelProvider {
         name: `${criteria.city} Grand Hotel`,
         stars: 5,
         address: `Central District, ${criteria.city}`,
-        amenities: ['Free Wi-Fi', 'Breakfast', 'Airport transfer', 'Pool', 'Gym'],
+        amenities: [
+          'Free Wi-Fi',
+          'Breakfast',
+          'Airport transfer',
+          'Pool',
+          'Gym',
+        ],
         images: [
           'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80',
           'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80',
@@ -92,6 +105,11 @@ export class StatefulHotelProvider implements IHotelProvider {
       return offer;
     });
 
+    while (this.offers.size > this.maxCachedOffers) {
+      const oldestKey = this.offers.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      this.offers.delete(oldestKey);
+    }
     return results;
   }
 
@@ -122,7 +140,6 @@ export class StatefulHotelProvider implements IHotelProvider {
     }
 
     const confirmationNumber = `HTL${nanoid(8).toUpperCase()}`;
-    this.activeConfirmations.add(confirmationNumber);
     return {
       confirmationNumber,
       supplierRef: `SUP-${nanoid(10).toUpperCase()}`,
@@ -132,7 +149,7 @@ export class StatefulHotelProvider implements IHotelProvider {
   }
 
   async cancel(confirmationNumber: string): Promise<{ success: boolean }> {
-    this.activeConfirmations.delete(confirmationNumber);
+    void confirmationNumber;
     return { success: true };
   }
 

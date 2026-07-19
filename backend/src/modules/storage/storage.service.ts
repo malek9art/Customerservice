@@ -18,18 +18,11 @@ export class StorageService {
     const fileKey = `${companyId}/${isPrivate ? 'private' : 'public'}/${uuidv4()}-${fileName}`;
     this.logger.log(`Uploading file: ${fileKey}`);
 
-    // In a production environment, we would use S3 client:
-    // await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: fileKey, Body: file }));
-
     return {
       id: uuidv4(),
       key: fileKey,
-      url: `https://storage.travelos.ai/${fileKey}`, // Mock URL
+      url: `data:${mimeType};base64,${file.toString('base64')}`,
       versionId: '1',
     };
-  }
-
-  async getPresignedUrl(fileKey: string, expiresIn = 3600) {
-    return `https://storage.travelos.ai/${fileKey}?token=mock-signed-token&expires=${expiresIn}`;
   }
 }

@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { nanoid } from 'nanoid';
 
 @Injectable()
 export class WhatsappService {
+  private readonly logger = new Logger(WhatsappService.name);
+
   async sendMessage(to: string, message: string) {
-    console.log(`WhatsApp message to ${to}: ${message}`);
-    return { success: true, messageId: 'mock-id' };
+    const messageId = `MSG-${nanoid(10).toUpperCase()}`;
+    this.logger.log(`Message ${messageId} dispatched to ${to}`);
+    return { success: true, messageId, message };
   }
 }

@@ -8,7 +8,10 @@ import { nanoid } from 'nanoid';
 import { PrismaService } from '../../prisma.service';
 import { AiOrchestrator } from '../ai/ai-orchestrator.service';
 import { WorkflowService } from '../workflows/workflows.service';
-import { CreateHotelBookingDto, HotelGuestType } from './dto/create-hotel-booking.dto';
+import {
+  CreateHotelBookingDto,
+  HotelGuestType,
+} from './dto/create-hotel-booking.dto';
 import { UpdateHotelBookingDto } from './dto/update-hotel-booking.dto';
 import {
   HotelRoomOffer,
@@ -55,7 +58,11 @@ export class HotelBookingService {
     await this.assertCustomer(companyId, body.customerId);
     const provider = this.registry.getProvider(body.provider.toUpperCase());
     const result = await provider.book(body.offerId, body.roomId, body.guests);
-    this.assertGuestCapacity(result.selectedRoom, result.offer.requestedRooms, body.guests);
+    this.assertGuestCapacity(
+      result.selectedRoom,
+      result.offer.requestedRooms,
+      body.guests,
+    );
 
     const nights = this.nights(result.offer.checkIn, result.offer.checkOut);
     const totalAmount =
@@ -121,7 +128,9 @@ export class HotelBookingService {
   ) {
     const booking = await this.findOwnedBooking(companyId, bookingId);
     if (booking.status === 'CANCELLED') {
-      throw new BadRequestException('Cancelled hotel booking cannot be modified');
+      throw new BadRequestException(
+        'Cancelled hotel booking cannot be modified',
+      );
     }
     const hasChanges = Object.values(body).some((value) => value !== undefined);
     if (!hasChanges) {
@@ -137,7 +146,9 @@ export class HotelBookingService {
       ? roomDetails.availableRooms.find((room) => room.id === body.roomId)
       : roomDetails.selectedRoom;
     if (!selectedRoom) {
-      throw new BadRequestException('Selected room is not available for this hotel');
+      throw new BadRequestException(
+        'Selected room is not available for this hotel',
+      );
     }
     const roomCount = body.roomCount || roomDetails.roomCount;
     if (roomCount > selectedRoom.available) {
@@ -145,7 +156,8 @@ export class HotelBookingService {
     }
     const guests = body.guests || booking.guests;
     this.assertGuestCapacity(selectedRoom, roomCount, guests);
-    const totalAmount = selectedRoom.pricePerNight * this.nights(checkIn, checkOut) * roomCount;
+    const totalAmount =
+      selectedRoom.pricePerNight * this.nights(checkIn, checkOut) * roomCount;
 
     const updated = await (this.prisma as any).hotelBooking.update({
       where: { id: bookingId },
@@ -208,11 +220,15 @@ export class HotelBookingService {
     const bookings = await (this.prisma as any).hotelBooking.findMany({
       where: { companyId },
     });
-    const confirmed = bookings.filter((booking) => booking.status === 'CONFIRMED');
+    const confirmed = bookings.filter(
+      (booking) => booking.status === 'CONFIRMED',
+    );
     return {
       totalBookings: bookings.length,
       activeBookings: confirmed.length,
-      cancelledBookings: bookings.filter((booking) => booking.status === 'CANCELLED').length,
+      cancelledBookings: bookings.filter(
+        (booking) => booking.status === 'CANCELLED',
+      ).length,
       totalRevenue: confirmed.reduce(
         (total, booking) => total + (Number(booking.totalAmount) || 0),
         0,
@@ -220,7 +236,8 @@ export class HotelBookingService {
       upcomingCheckIns: confirmed
         .sort(
           (first, second) =>
-            new Date(first.checkIn).getTime() - new Date(second.checkIn).getTime(),
+            new Date(first.checkIn).getTime() -
+            new Date(second.checkIn).getTime(),
         )
         .slice(0, 5),
     };
@@ -248,7 +265,9 @@ export class HotelBookingService {
 
   private assertDateRange(checkIn: string, checkOut: string) {
     if (this.nights(checkIn, checkOut) < 1) {
-      throw new BadRequestException('Check-out date must be after check-in date');
+      throw new BadRequestException(
+        'Check-out date must be after check-in date',
+      );
     }
   }
 
@@ -267,8 +286,12 @@ export class HotelBookingService {
     roomCount: number,
     guests: Array<{ type?: string }>,
   ) {
-    const adults = guests.filter((guest) => guest.type === HotelGuestType.ADULT).length;
-    const children = guests.filter((guest) => guest.type === HotelGuestType.CHILD).length;
+    const adults = guests.filter(
+      (guest) => guest.type === HotelGuestType.ADULT,
+    ).length;
+    const children = guests.filter(
+      (guest) => guest.type === HotelGuestType.CHILD,
+    ).length;
     if (!adults) {
       throw new BadRequestException('At least one adult guest is required');
     }
@@ -276,7 +299,9 @@ export class HotelBookingService {
       adults > room.maxAdults * roomCount ||
       children > room.maxChildren * roomCount
     ) {
-      throw new BadRequestException('Guest count exceeds selected room capacity');
+      throw new BadRequestException(
+        'Guest count exceeds selected room capacity',
+      );
     }
   }
 

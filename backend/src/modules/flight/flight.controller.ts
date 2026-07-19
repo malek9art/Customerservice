@@ -13,7 +13,9 @@ export class FlightController {
   constructor(private readonly flightService: FlightBookingService) {}
 
   @Post('search')
-  @ApiOperation({ summary: 'Search for flights across live GDS provider adapters' })
+  @ApiOperation({
+    summary: 'Search for flights across live GDS provider adapters',
+  })
   @ApiHeader({ name: 'x-company-id', required: true })
   async search(
     @CurrentCompany() companyId: string,
@@ -23,7 +25,10 @@ export class FlightController {
   }
 
   @Post('fare-rules/evaluate')
-  @ApiOperation({ summary: 'Evaluate flight fare rules and dynamic baggage/penalty policy via BRE' })
+  @ApiOperation({
+    summary:
+      'Evaluate flight fare rules and dynamic baggage/penalty policy via BRE',
+  })
   @ApiHeader({ name: 'x-company-id', required: true })
   async evaluateFareRules(
     @CurrentCompany() companyId: string,
@@ -33,7 +38,9 @@ export class FlightController {
   }
 
   @Post('bookings')
-  @ApiOperation({ summary: 'Create a live flight booking and PNR creation in GDS' })
+  @ApiOperation({
+    summary: 'Create a live flight booking and PNR creation in GDS',
+  })
   @ApiHeader({ name: 'x-company-id', required: true })
   async createBooking(
     @CurrentCompany() companyId: string,

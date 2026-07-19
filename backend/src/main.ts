@@ -42,4 +42,4 @@ async function bootstrap() {
   logger.log(`Application is running on: http://localhost:${port}`);
   logger.log(`Swagger Docs available at: http://localhost:${port}/api/docs`);
 }
-bootstrap();
+void bootstrap();

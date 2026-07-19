@@ -7,11 +7,13 @@ import {
   UseInterceptors,
   UploadedFile,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiHeader } from '@nestjs/swagger';
 import { DocumentIntelligenceService } from './document-intelligence.service';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
+import { VaultDocumentDto } from './dto/vault-document.dto';
 
 @ApiTags('Document Intelligence')
 @Controller('documents')
@@ -26,8 +28,9 @@ export class DocumentIntelligenceController {
   async upload(
     @CurrentCompany() companyId: string,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { customerId?: string; type: string; tags?: string },
+    @Body() body: VaultDocumentDto,
   ) {
+    if (!file) throw new BadRequestException('Document file is required');
     const tags = body.tags ? body.tags.split(',') : [];
     return this.docService.processAndVault(
       companyId,

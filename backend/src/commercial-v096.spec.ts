@@ -31,11 +31,18 @@ describe('TravelOS AI V0.96 - Commercial End-to-End Execution Scenario', () => {
 
     aiAgentService = moduleFixture.get<AiAgentService>(AiAgentService);
     pilgrimageService = moduleFixture.get<PilgrimageService>(PilgrimageService);
-    flightService = moduleFixture.get<FlightBookingService>(FlightBookingService);
-    autoReconciliationService = moduleFixture.get<AutoReconciliationService>(AutoReconciliationService);
-    postingEngine = moduleFixture.get<AccountingPostingEngine>(AccountingPostingEngine);
+    flightService =
+      moduleFixture.get<FlightBookingService>(FlightBookingService);
+    autoReconciliationService = moduleFixture.get<AutoReconciliationService>(
+      AutoReconciliationService,
+    );
+    postingEngine = moduleFixture.get<AccountingPostingEngine>(
+      AccountingPostingEngine,
+    );
     visaService = moduleFixture.get<VisaService>(VisaService);
-    docIntelligenceService = moduleFixture.get<DocumentIntelligenceService>(DocumentIntelligenceService);
+    docIntelligenceService = moduleFixture.get<DocumentIntelligenceService>(
+      DocumentIntelligenceService,
+    );
     prisma = moduleFixture.get<PrismaService>(PrismaService);
   });
 
@@ -94,7 +101,9 @@ describe('TravelOS AI V0.96 - Commercial End-to-End Execution Scenario', () => {
     expect(bookingRes.pilgrims).toHaveLength(2);
 
     // Verify remaining slots synced
-    const updatedPkg = await (prisma as any).package.findUnique({ where: { id: pkg.id } });
+    const updatedPkg = await (prisma as any).package.findUnique({
+      where: { id: pkg.id },
+    });
     expect(updatedPkg.remainingSlots).toBe(28);
 
     // Step 4: Room Allocation & Bus Allocation Algorithms
@@ -156,20 +165,27 @@ describe('TravelOS AI V0.96 - Commercial End-to-End Execution Scenario', () => {
       [{ firstName: 'Ahmed', lastName: 'Ali' }],
     );
 
-    const ticketedFlight = await flightService.issueTicket(companyId, flightBooking.id);
+    const ticketedFlight = await flightService.issueTicket(
+      companyId,
+      flightBooking.id,
+    );
     expect(ticketedFlight.status).toBe('TICKETED');
 
     // Step 8: Financial Ledger Posting Engine & Double-Entry Verification
-    const journal = await postingEngine.postEvent(companyId, 'PILGRIMAGE_BOOKING', {
-      id: bookingRes.booking.id,
-      amount: 6400,
-      description: 'Ramadan Umrah Package Settlement',
-    });
+    const journal = await postingEngine.postEvent(
+      companyId,
+      'PILGRIMAGE_BOOKING',
+      {
+        id: bookingRes.booking.id,
+        amount: 6400,
+        description: 'Ramadan Umrah Package Settlement',
+      },
+    );
 
     expect(journal).toBeDefined();
 
     // Step 9: Bank Transfer Statement Processing & Auto-Reconciliation
-    const invoice = await (prisma as any).invoice.create({
+    await (prisma as any).invoice.create({
       data: {
         companyId,
         number: 'INV-UMRAH-2026',
@@ -178,19 +194,22 @@ describe('TravelOS AI V0.96 - Commercial End-to-End Execution Scenario', () => {
       },
     });
 
-    const reconRes = await autoReconciliationService.processBankStatement(companyId, {
-      bankName: 'Al Rajhi Bank',
-      accountNumber: 'SA99112233',
-      transactions: [
-        {
-          bankReference: 'BANK-TRX-8899',
-          senderName: 'JOHN DOE',
-          amount: 6400,
-          transactionDate: '2026-07-18',
-          paymentReference: 'INV-UMRAH-2026',
-        },
-      ],
-    });
+    const reconRes = await autoReconciliationService.processBankStatement(
+      companyId,
+      {
+        bankName: 'Al Rajhi Bank',
+        accountNumber: 'SA99112233',
+        transactions: [
+          {
+            bankReference: 'BANK-TRX-8899',
+            senderName: 'JOHN DOE',
+            amount: 6400,
+            transactionDate: '2026-07-18',
+            paymentReference: 'INV-UMRAH-2026',
+          },
+        ],
+      },
+    );
 
     expect(reconRes.summary.autoMatchedCount).toBe(1);
     expect(reconRes.results[0].status).toBe('AUTOMATED_MATCH');
@@ -201,7 +220,7 @@ describe('TravelOS AI V0.96 - Commercial End-to-End Execution Scenario', () => {
       bookingRes.pilgrims[0].id,
     );
 
-    expect(cardRes.cardUrl).toContain('storage.travelos.ai');
+    expect(cardRes.cardUrl).toMatch(/^data:application\/pdf;base64,/);
     expect(cardRes.documentId).toBeDefined();
   });
 });

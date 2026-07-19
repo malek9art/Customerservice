@@ -4,7 +4,13 @@ import { PrismaService } from '../../prisma.service';
 
 export interface WorkflowTransitionLog {
   workflowId: string;
-  domain: 'PILGRIMAGE' | 'FLIGHT' | 'VISA' | 'PASSPORT' | 'FINANCE' | 'CHAT_ESCALATION';
+  domain:
+    | 'PILGRIMAGE'
+    | 'FLIGHT'
+    | 'VISA'
+    | 'PASSPORT'
+    | 'FINANCE'
+    | 'CHAT_ESCALATION';
   eventName: string;
   previousState?: string;
   newState: string;
@@ -23,13 +29,17 @@ export class WorkflowService {
   ) {}
 
   async trigger(eventName: string, payload: any) {
-    this.logger.log(`Workflow State Event Triggered: [${eventName}] for entity [${payload.bookingId || payload.id || payload.pnr || 'N/A'}]`);
+    this.logger.log(
+      `Workflow State Event Triggered: [${eventName}] for entity [${payload.bookingId || payload.id || payload.pnr || 'N/A'}]`,
+    );
     await this.eventEmitter.emitAsync(eventName, payload);
   }
 
   @OnEvent('pilgrimage.booking_cancelled')
   async handlePilgrimageCancellation(payload: any) {
-    this.logger.log(`Processing Pilgrimage Cancellation & Slot Restoration for booking ${payload.bookingId}`);
+    this.logger.log(
+      `Processing Pilgrimage Cancellation & Slot Restoration for booking ${payload.bookingId}`,
+    );
 
     // 1. Update Booking Status
     if (payload.bookingId) {
@@ -61,7 +71,9 @@ export class WorkflowService {
 
   @OnEvent('flight.booking_cancelled')
   async handleFlightCancellation(payload: any) {
-    this.logger.log(`Processing Flight Order Cancellation for PNR ${payload.pnr}`);
+    this.logger.log(
+      `Processing Flight Order Cancellation for PNR ${payload.pnr}`,
+    );
 
     if (payload.bookingId) {
       await (this.prisma as any).flightBooking.update({
@@ -81,7 +93,9 @@ export class WorkflowService {
 
   @OnEvent('passport.status_updated')
   async handlePassportCustodyTransition(payload: any) {
-    this.logger.log(`Passport Custody Logged: ${payload.passportNumber} -> Status: ${payload.status}`);
+    this.logger.log(
+      `Passport Custody Logged: ${payload.passportNumber} -> Status: ${payload.status}`,
+    );
 
     await (this.prisma as any).passportLog.create({
       data: {
@@ -96,7 +110,9 @@ export class WorkflowService {
 
   @OnEvent('chat.escalated_human')
   async handleHumanEscalation(payload: any) {
-    this.logger.log(`Session ${payload.sessionId} Escalated to Human Employee Supervisor`);
+    this.logger.log(
+      `Session ${payload.sessionId} Escalated to Human Employee Supervisor`,
+    );
 
     if (payload.sessionId) {
       await (this.prisma as any).chatSession.update({
