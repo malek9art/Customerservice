@@ -30,8 +30,17 @@ export class CustomersService {
       throw new BadRequestException('Customer with this phone already exists');
     }
 
+    const suppliedData = Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined),
+    );
     const customer = await (this.prisma as any).customer.create({
-      data: { ...data, companyId },
+      data: {
+        rating: 0,
+        preferences: {},
+        interests: [],
+        ...suppliedData,
+        companyId,
+      },
     });
 
     await this.audit.log({
@@ -48,32 +57,61 @@ export class CustomersService {
   async getCustomer360(companyId: string, customerId: string) {
     const customer = await (this.prisma as any).customer.findUnique({
       where: { id: customerId },
-      include: {
-        passports: true,
-        identities: true,
-        familyMembers: true,
-        flightBookings: true,
-        hotelBookings: true,
-        pilgrimageBookings: true,
-        visas: true,
-        transactions: true,
-        documents: true,
-        activityLogs: { orderBy: { createdAt: 'desc' }, take: 20 },
-      },
     });
 
     if (!customer || customer.companyId !== companyId) {
       throw new NotFoundException('Customer not found');
     }
 
-    // AI Summary
+    const [
+      passports,
+      identities,
+      familyMembers,
+      flightBookings,
+      hotelBookings,
+      pilgrimageBookings,
+      visas,
+      transactions,
+      documents,
+      activityLogs,
+    ] = await Promise.all([
+      (this.prisma as any).passportInventory.findMany({ where: { customerId } }),
+      (this.prisma as any).nationalIdentity.findMany({ where: { customerId } }),
+      (this.prisma as any).familyMember.findMany({ where: { customerId } }),
+      (this.prisma as any).flightBooking.findMany({ where: { customerId } }),
+      (this.prisma as any).hotelBooking.findMany({ where: { customerId } }),
+      (this.prisma as any).pilgrimageBooking.findMany({ where: { customerId } }),
+      (this.prisma as any).visaRecord.findMany({ where: { customerId } }),
+      (this.prisma as any).transaction.findMany({ where: { customerId } }),
+      (this.prisma as any).document.findMany({ where: { customerId } }),
+      (this.prisma as any).activityLog.findMany({
+        where: { customerId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    const interests = Array.isArray(customer.interests)
+      ? customer.interests
+      : [];
     const aiSummary = await this.ai.process(
-      `Summarize travel history and profile for customer: ${customer.fullName}. Interests: ${customer.interests.join(', ')}`,
-      { companyId, task: 'CUSTOMER_SUMMARY' },
+      `Summarize travel history and profile for customer: ${customer.fullName}. Interests: ${interests.join(', ')}`,
+      { companyId, customerId, task: 'CUSTOMER_SUMMARY' },
     );
 
     return {
       ...customer,
+      interests,
+      passports,
+      identities,
+      familyMembers,
+      flightBookings,
+      hotelBookings,
+      pilgrimageBookings,
+      visas,
+      transactions,
+      documents,
+      activityLogs,
       aiInsights: {
         summary: aiSummary.response,
         recommendations: ['Next Umrah Season Offer', 'Visa Renewal Reminder'],

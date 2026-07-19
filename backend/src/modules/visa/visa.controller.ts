@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { VisaService } from './visa.service';
+import { CreateVisaApplicationDto } from './dto/create-visa-application.dto';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
 @ApiTags('Visa Operations')
@@ -11,7 +12,10 @@ export class VisaController {
   @Post('applications')
   @ApiOperation({ summary: 'Create a new visa application' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async create(@CurrentCompany() companyId: string, @Body() data: any) {
+  async create(
+    @CurrentCompany() companyId: string,
+    @Body() data: CreateVisaApplicationDto,
+  ) {
     return this.visaService.createApplication(companyId, data);
   }
 

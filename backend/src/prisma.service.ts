@@ -15,6 +15,7 @@ export class PrismaService implements OnModuleInit {
     passportInventory: new Map(),
     passportLog: new Map(),
     nationalIdentity: new Map(),
+    familyMember: new Map(),
     hotelBooking: new Map(),
     package: new Map(),
     itineraryItem: new Map(),
@@ -292,6 +293,7 @@ export class PrismaService implements OnModuleInit {
   get passport() { return this.createGenericModelStore('passportInventory'); }
   get passportLog() { return this.createGenericModelStore('passportLog'); }
   get nationalIdentity() { return this.createGenericModelStore('nationalIdentity'); }
+  get familyMember() { return this.createGenericModelStore('familyMember'); }
   get hotelBooking() { return this.createGenericModelStore('hotelBooking'); }
   get package() { return this.createGenericModelStore('package'); }
   get itineraryItem() { return this.createGenericModelStore('itineraryItem'); }

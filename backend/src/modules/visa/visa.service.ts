@@ -5,6 +5,7 @@ import { AiOrchestrator } from '../ai/ai-orchestrator.service';
 import { WorkflowService } from '../workflows/workflows.service';
 import { AuditService } from '../audit/audit.service';
 import { nanoid } from 'nanoid';
+import { CreateVisaApplicationDto } from './dto/create-visa-application.dto';
 
 @Injectable()
 export class VisaService {
@@ -18,27 +19,86 @@ export class VisaService {
     private audit: AuditService,
   ) {}
 
-  async createApplication(companyId: string, data: any) {
+  async createApplication(
+    companyId: string,
+    data: CreateVisaApplicationDto,
+  ) {
+    const customer = await (this.prisma as any).customer.findUnique({
+      where: { id: data.customerId },
+    });
+    if (!customer || customer.companyId !== companyId) {
+      throw new NotFoundException('Customer not found');
+    }
+
     const referenceNumber = `VISA-${nanoid(8).toUpperCase()}`;
     const requirements = await this.bre.evaluate(
       companyId,
       'VISA_REQUIREMENTS',
       data,
     );
-    const aiCheck = await this.ai.process(`Assess visa eligibility`, {
+    const aiCheck = await this.ai.process('Assess visa eligibility', {
       companyId,
+      customerId: data.customerId,
+      country: data.country,
+      visaType: data.visaType,
     });
 
-    return {
-      id: 'mock-visa-id',
-      referenceNumber,
-      requirements,
-      eligibilityData: aiCheck.response,
-    };
+    const application = await (this.prisma as any).visaRecord.create({
+      data: {
+        customerId: data.customerId,
+        country: data.country,
+        visaType: data.visaType,
+        status: 'DRAFT',
+        referenceNumber,
+        requirements,
+        eligibilityData: aiCheck.response,
+      },
+    });
+
+    await this.workflow.trigger('visa.application_created', {
+      id: application.id,
+      customerId: data.customerId,
+      companyId,
+    });
+    await this.audit.log({
+      companyId,
+      action: 'VISA_APPLICATION_CREATED',
+      entityType: 'VISA',
+      entityId: application.id,
+      newValues: application,
+    });
+
+    return application;
   }
 
   async getDashboard(companyId: string) {
-    return { stats: { total: 0, pending: 0 }, kanban: {} };
+    const customers = await (this.prisma as any).customer.findMany({
+      where: { companyId },
+    });
+    const customerIds = new Set(customers.map((customer: any) => customer.id));
+    const allApplications = await (this.prisma as any).visaRecord.findMany({});
+    const applications = allApplications.filter((application: any) =>
+      customerIds.has(application.customerId),
+    );
+    const kanban = applications.reduce(
+      (groups: Record<string, any[]>, application: any) => {
+        const status = application.status || 'DRAFT';
+        (groups[status] ||= []).push(application);
+        return groups;
+      },
+      {},
+    );
+
+    return {
+      stats: {
+        total: applications.length,
+        pending: applications.filter(
+          (application: any) =>
+            !['APPROVED', 'REJECTED', 'CANCELLED'].includes(application.status),
+        ).length,
+      },
+      kanban,
+    };
   }
 
   async updateStatus(
@@ -47,6 +107,23 @@ export class VisaService {
     actorId: string,
     notes?: string,
   ) {
-    return { id, status };
+    const application = await (this.prisma as any).visaRecord.findUnique({
+      where: { id },
+    });
+    if (!application) {
+      throw new NotFoundException('Visa application not found');
+    }
+
+    const updated = await (this.prisma as any).visaRecord.update({
+      where: { id },
+      data: { status },
+    });
+    await this.workflow.trigger('visa.status_updated', {
+      id,
+      status,
+      actorId,
+      notes,
+    });
+    return updated;
   }
 }
