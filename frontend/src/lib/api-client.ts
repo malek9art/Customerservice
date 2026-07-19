@@ -480,6 +480,10 @@ export const TravelOSApi = {
       }),
   },
 
+  analytics: {
+    executive: (companyId = DEFAULT_COMPANY_ID) => apiFetch<{ counts: Record<string, number>; finance: Record<string, number>; cancellations: number; occupancyRate: number; topCustomers: Array<{ name: string; revenue: number }>; topDestinations: Array<{ destination: string; count: number }>; topPackages: Array<{ name: string; booked: number }>; charts: Record<string, Array<{ label: string; value: number }>> }>('/analytics/dashboard/executive', { companyId }),
+  },
+
   ai: {
     executeChain: (
       prompt: string,

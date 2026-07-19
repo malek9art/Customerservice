@@ -111,6 +111,7 @@ export default function OperationsDashboard() {
   const [pilgrimageResult, setPilgrimageResult] = useState('');
   const [financialDashboard, setFinancialDashboard] = useState<Record<string, number>>({});
   const [ledgerEntries, setLedgerEntries] = useState<Array<Record<string, unknown>>>([]);
+  const [analytics, setAnalytics] = useState<Awaited<ReturnType<typeof TravelOSApi.analytics.executive>> | null>(null);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({});
   const [paymentMethod, setPaymentMethod] = useState('CASH');
 
@@ -213,13 +214,15 @@ export default function OperationsDashboard() {
       TravelOSApi.packages.list(),
       TravelOSApi.accounting.getDashboard(),
       TravelOSApi.accounting.ledger(),
+      TravelOSApi.analytics.executive(),
     ])
-      .then(([, customerResults, passports, packageResults, finance, ledger]) => {
+      .then(([, customerResults, passports, packageResults, finance, ledger, analyticsData]) => {
         setCustomers(customerResults);
         setInventory(passports);
         setPackages(packageResults);
         setFinancialDashboard(finance);
         setLedgerEntries(ledger);
+        setAnalytics(analyticsData);
         setConnected(true);
       })
       .catch((error) => {
@@ -591,11 +594,11 @@ export default function OperationsDashboard() {
   };
   const createManualInvoice = (event: FormEvent) => {
     event.preventDefault(); if (!selectedCustomer) return;
-    void runTask('create-invoice', async () => { await TravelOSApi.accounting.createInvoice({ customerId: selectedCustomer.id, items: [{ description: invoiceForm.description, quantity: invoiceForm.quantity, unitPrice: invoiceForm.unitPrice }], taxRate: invoiceForm.taxRate, discount: invoiceForm.discount, currency: invoiceForm.currency }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setNotice({ type: 'success', text: 'تم إنشاء الفاتورة والقيد اليومي.' }); });
+    void runTask('create-invoice', async () => { await TravelOSApi.accounting.createInvoice({ customerId: selectedCustomer.id, items: [{ description: invoiceForm.description, quantity: invoiceForm.quantity, unitPrice: invoiceForm.unitPrice }], taxRate: invoiceForm.taxRate, discount: invoiceForm.discount, currency: invoiceForm.currency }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setAnalytics(await TravelOSApi.analytics.executive()); setNotice({ type: 'success', text: 'تم إنشاء الفاتورة والقيد اليومي.' }); });
   };
   const payInvoice = (invoiceId: string, balance: number) => {
     if (!selectedCustomer) return; const amount = paymentAmounts[invoiceId] || balance;
-    void runTask(`pay-${invoiceId}`, async () => { await TravelOSApi.accounting.recordPayment(invoiceId, { amount, method: paymentMethod }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setNotice({ type: 'success', text: 'تم تسجيل الدفعة وتحديث الرصيد والقيد.' }); });
+    void runTask(`pay-${invoiceId}`, async () => { await TravelOSApi.accounting.recordPayment(invoiceId, { amount, method: paymentMethod }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setAnalytics(await TravelOSApi.analytics.executive()); setNotice({ type: 'success', text: 'تم تسجيل الدفعة وتحديث الرصيد والقيد.' }); });
   };
 
   return (
@@ -1170,6 +1173,8 @@ export default function OperationsDashboard() {
                   <div className="mt-5 space-y-3">{selectedCustomer.invoices?.map((invoice) => <article key={invoice.id} className="rounded-xl border p-4"><div className="flex flex-wrap justify-between"><div><strong>{invoice.number}</strong><p className="text-xs text-slate-500">{invoice.sourceType || 'MANUAL'} · {invoice.status}</p></div><div className="text-left"><strong>{invoice.amount} {invoice.currency}</strong><p className="text-xs text-rose-600">متبقي {invoice.balance}</p></div></div><div className="mt-2 text-xs">{invoice.items?.map((item, index) => <span key={index} className="ml-2">{item.description}</span>)}</div>{invoice.balance > 0 && <div className="mt-3 flex flex-wrap gap-2"><input type="number" min={0.01} max={invoice.balance} className={`${inputClass} max-w-36`} value={paymentAmounts[invoice.id] ?? invoice.balance} onChange={(e) => setPaymentAmounts({ ...paymentAmounts, [invoice.id]: Number(e.target.value) })} /><select className={`${inputClass} max-w-44`} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="CASH">نقدي</option><option value="BANK_TRANSFER">تحويل بنكي</option><option value="CARD">بطاقة</option><option value="WALLET">محفظة</option></select><button type="button" disabled={busy !== null} onClick={() => payInvoice(invoice.id, invoice.balance)} className={primaryButton}>تسجيل دفعة</button></div>}</article>)}</div>
                   <div className="mt-5"><h3 className="font-black">آخر قيود اليومية</h3><div className="mt-2 max-h-48 overflow-auto text-xs">{ledgerEntries.slice(0,10).map((journal) => <div key={String(journal.id)} className="flex justify-between border-b py-2"><span>{String(journal.referenceNumber)}</span><span>{String(journal.description || '')}</span></div>)}</div></div>
                 </Panel>
+
+                {analytics && <Panel title="التحليلات التنفيذية" description="مؤشرات مباشرة محسوبة من بيانات Memory Store الفعلية."><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(analytics.counts).map(([key,value]) => <div key={key} className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">{key}</p><strong className="text-2xl">{value}</strong></div>)}</div><div className="mt-5 grid gap-4 md:grid-cols-2"><div className="rounded-xl border p-4"><h3 className="font-black">المالية</h3>{Object.entries(analytics.finance).map(([key,value]) => <div key={key} className="mt-2 flex justify-between text-sm"><span>{key}</span><strong>{value}</strong></div>)}</div><div className="rounded-xl border p-4"><h3 className="font-black">KPIs</h3><p className="mt-2">الإلغاءات: <strong>{analytics.cancellations}</strong></p><p>نسبة الإشغال: <strong>{analytics.occupancyRate}%</strong></p></div></div><div className="mt-5 grid gap-4 md:grid-cols-3"><div><h3 className="font-black">أفضل العملاء</h3>{analytics.topCustomers.map((item) => <p key={item.name} className="mt-2 text-sm">{item.name}: {item.revenue}</p>)}</div><div><h3 className="font-black">أفضل الوجهات</h3>{analytics.topDestinations.map((item) => <p key={item.destination} className="mt-2 text-sm">{item.destination}: {item.count}</p>)}</div><div><h3 className="font-black">أفضل الباقات</h3>{analytics.topPackages.map((item) => <p key={item.name} className="mt-2 text-sm">{item.name}: {item.booked}</p>)}</div></div><div className="mt-5 space-y-2">{analytics.charts.bookings.map((item) => <div key={item.label}><div className="flex justify-between text-xs"><span>{item.label}</span><span>{item.value}</span></div><div className="h-3 rounded bg-slate-100"><div className="h-full rounded bg-indigo-600" style={{width:`${Math.min(100,item.value*10)}%`}} /></div></div>)}</div></Panel>}
               </>
             )}
           </div>
