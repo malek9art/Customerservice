@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { AccountingPostingEngine } from './engine/accounting-posting-engine.service';
 import { nanoid } from 'nanoid';
@@ -23,7 +28,8 @@ export class BankStatementPayload {
 }
 
 export interface MatchingCandidate {
-  targetType: 'INVOICE' | 'PILGRIMAGE_BOOKING' | 'FLIGHT_BOOKING' | 'HOTEL_BOOKING';
+  targetType:
+    'INVOICE' | 'PILGRIMAGE_BOOKING' | 'FLIGHT_BOOKING' | 'HOTEL_BOOKING';
   targetId: string;
   referenceNumber: string;
   amount: number;
@@ -87,17 +93,23 @@ export class AutoReconciliationService {
     for (const tx of transactions) {
       const txAmount = Number(tx.amount) || 0;
       if (txAmount <= 0) {
-        this.logger.warn(`Skipping invalid bank transaction amount: ${tx.amount}`);
+        this.logger.warn(
+          `Skipping invalid bank transaction amount: ${tx.amount}`,
+        );
         continue;
       }
 
       const candidates: MatchingCandidate[] = [];
-      const cleanPaymentRef = String(tx.paymentReference || '').trim().toUpperCase();
+      const cleanPaymentRef = String(tx.paymentReference || '')
+        .trim()
+        .toUpperCase();
 
       // 1. Check exact payment reference against Invoice numbers (case/space insensitive)
       for (const inv of invoices) {
         const invAmount = Number(inv.amount) || 0;
-        const cleanInvNum = String(inv.number || '').trim().toUpperCase();
+        const cleanInvNum = String(inv.number || '')
+          .trim()
+          .toUpperCase();
 
         if (cleanPaymentRef && cleanInvNum && cleanPaymentRef === cleanInvNum) {
           candidates.push({
@@ -116,7 +128,10 @@ export class AutoReconciliationService {
           if (cust && tx.senderName) {
             const cleanSender = String(tx.senderName).toLowerCase().trim();
             const cleanCust = String(cust.fullName).toLowerCase().trim();
-            if (cleanSender.includes(cleanCust) || cleanCust.includes(cleanSender)) {
+            if (
+              cleanSender.includes(cleanCust) ||
+              cleanCust.includes(cleanSender)
+            ) {
               score = 0.85;
               reason = 'Amount + Customer Name Match';
             }
@@ -135,10 +150,17 @@ export class AutoReconciliationService {
       // 2. Check against Flight Bookings
       for (const fb of flightBookings) {
         const fbAmount = Number(fb.totalAmount) || 0;
-        const cleanPnr = String(fb.pnr || '').trim().toUpperCase();
-        const cleanFbRef = String(fb.referenceNumber || '').trim().toUpperCase();
+        const cleanPnr = String(fb.pnr || '')
+          .trim()
+          .toUpperCase();
+        const cleanFbRef = String(fb.referenceNumber || '')
+          .trim()
+          .toUpperCase();
 
-        if (cleanPaymentRef && (cleanPnr === cleanPaymentRef || cleanFbRef === cleanPaymentRef)) {
+        if (
+          cleanPaymentRef &&
+          (cleanPnr === cleanPaymentRef || cleanFbRef === cleanPaymentRef)
+        ) {
           candidates.push({
             targetType: 'FLIGHT_BOOKING',
             targetId: fb.id,
@@ -153,11 +175,21 @@ export class AutoReconciliationService {
       candidates.sort((a, b) => b.confidenceScore - a.confidenceScore);
       const topMatch = candidates[0];
 
-      if (topMatch && topMatch.confidenceScore >= 0.80) {
+      if (topMatch && topMatch.confidenceScore >= 0.8) {
+        const invoicePayment =
+          topMatch.targetType === 'INVOICE'
+            ? await this.prepareInvoicePayment(
+                companyId,
+                topMatch.targetId,
+                txAmount,
+              )
+            : null;
         const payment = await (this.prisma as any).payment.create({
           data: {
             companyId,
-            invoiceId: topMatch.targetType === 'INVOICE' ? topMatch.targetId : null,
+            invoiceId:
+              topMatch.targetType === 'INVOICE' ? topMatch.targetId : null,
+            customerId: invoicePayment?.customerId,
             amount: txAmount,
             method: 'BANK_TRANSFER',
             gateway: payload.bankName || 'BANK',
@@ -166,10 +198,10 @@ export class AutoReconciliationService {
           },
         });
 
-        if (topMatch.targetType === 'INVOICE') {
+        if (invoicePayment) {
           await (this.prisma as any).invoice.update({
             where: { id: topMatch.targetId },
-            data: { status: 'PAID' },
+            data: invoicePayment.update,
           });
         }
 
@@ -195,7 +227,7 @@ export class AutoReconciliationService {
           paymentId: payment.id,
           journalId: journal?.id,
         });
-      } else if (topMatch && topMatch.confidenceScore >= 0.50) {
+      } else if (topMatch && topMatch.confidenceScore >= 0.5) {
         results.push({
           bankReference: tx.bankReference,
           amount: txAmount,
@@ -227,9 +259,15 @@ export class AutoReconciliationService {
       }
     }
 
-    const autoMatchedCount = results.filter((r) => r.status === 'AUTOMATED_MATCH').length;
-    const needsReviewCount = results.filter((r) => r.status === 'NEEDS_REVIEW').length;
-    const unmatchedCount = results.filter((r) => r.status === 'UNMATCHED').length;
+    const autoMatchedCount = results.filter(
+      (r) => r.status === 'AUTOMATED_MATCH',
+    ).length;
+    const needsReviewCount = results.filter(
+      (r) => r.status === 'NEEDS_REVIEW',
+    ).length;
+    const unmatchedCount = results.filter(
+      (r) => r.status === 'UNMATCHED',
+    ).length;
     const totalAmount = results.reduce((sum, r) => sum + r.amount, 0);
 
     return {
@@ -251,10 +289,15 @@ export class AutoReconciliationService {
     targetId: string,
     amount: number,
   ) {
+    const invoicePayment =
+      targetType === 'INVOICE'
+        ? await this.prepareInvoicePayment(companyId, targetId, amount)
+        : null;
     const payment = await (this.prisma as any).payment.create({
       data: {
         companyId,
         invoiceId: targetType === 'INVOICE' ? targetId : null,
+        customerId: invoicePayment?.customerId,
         amount,
         method: 'BANK_TRANSFER',
         transactionId: bankReference,
@@ -262,10 +305,10 @@ export class AutoReconciliationService {
       },
     });
 
-    if (targetType === 'INVOICE') {
+    if (invoicePayment) {
       await (this.prisma as any).invoice.update({
         where: { id: targetId },
-        data: { status: 'PAID' },
+        data: invoicePayment.update,
       });
     }
 
@@ -286,6 +329,36 @@ export class AutoReconciliationService {
       paymentId: payment.id,
       journalId: journal?.id,
       status: 'AUTOMATED_MATCH',
+    };
+  }
+
+  private async prepareInvoicePayment(
+    companyId: string,
+    invoiceId: string,
+    amount: number,
+  ) {
+    const invoice = await (this.prisma as any).invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice || invoice.companyId !== companyId) {
+      throw new NotFoundException('Invoice not found');
+    }
+    const paidAmount = Number(invoice.paidAmount || 0);
+    const balance = Number(
+      invoice.balance ?? Number(invoice.amount) - paidAmount,
+    );
+    if (amount > balance) {
+      throw new BadRequestException('Payment cannot exceed invoice balance');
+    }
+    const nextPaidAmount = paidAmount + amount;
+    const nextBalance = Number(invoice.amount) - nextPaidAmount;
+    return {
+      customerId: invoice.customerId,
+      update: {
+        paidAmount: nextPaidAmount,
+        balance: nextBalance,
+        status: nextBalance === 0 ? 'PAID' : 'PARTIAL',
+      },
     };
   }
 }

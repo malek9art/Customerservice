@@ -1,15 +1,11 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
-import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class SaasService {
   private readonly logger = new Logger(SaasService.name);
 
-  constructor(
-    private prisma: PrismaService,
-    private config: ConfigService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async onBoardTenant(data: {
     name: string;
@@ -31,40 +27,72 @@ export class SaasService {
     });
     if (!plan) throw new BadRequestException('Invalid subscription plan');
 
-    // 3. Create Company & Initial Subscription
-    return await (this.prisma as any).company.create({
+    // 3. Create Company, initial subscription, and administrator.
+    const company = await (this.prisma as any).company.create({
       data: {
         name: data.name,
         slug: data.slug,
         subscriptionTier: plan.name,
-        subscriptions: {
-          create: {
-            planId: plan.id,
-            endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days trial
-            status: 'TRIAL',
-          },
-        },
+        status: 'ACTIVE',
+        settings: {},
       },
     });
+    const subscription = await (this.prisma as any).subscription.create({
+      data: {
+        companyId: company.id,
+        planId: plan.id,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        status: 'TRIAL',
+      },
+    });
+    const administrator = await (this.prisma as any).employee.create({
+      data: {
+        companyId: company.id,
+        userId: data.adminEmail,
+        email: data.adminEmail,
+        fullName: `${data.name} Administrator`,
+        role: 'ADMIN',
+        permissions: ['*'],
+        isActive: true,
+      },
+    });
+    return { company, subscription, administrator };
   }
 
   async getPlatformMetrics() {
+    const [companies, subscriptions, employees, documents, messages] =
+      await Promise.all([
+        (this.prisma as any).company.findMany({}),
+        (this.prisma as any).subscription.findMany({}),
+        (this.prisma as any).employee.findMany({}),
+        (this.prisma as any).document.findMany({}),
+        (this.prisma as any).chatMessage.findMany({}),
+      ]);
     return {
-      totalTenants: 1250,
-      activeSubscriptions: 1100,
-      mrr: 45000,
-      avgHealthScore: 92,
-      topModules: ['CRM', 'WhatsApp AI', 'Visa Ops'],
+      totalTenants: companies.length,
+      activeSubscriptions: subscriptions.filter((item: any) =>
+        ['ACTIVE', 'TRIAL'].includes(item.status),
+      ).length,
+      activeEmployees: employees.filter((item: any) => item.isActive).length,
       usage: {
-        aiTokens: '450M',
-        storage: '12TB',
-        messages: '1.2M',
+        documents: documents.length,
+        messages: messages.length,
       },
     };
   }
 
   async checkQuota(companyId: string, metric: string) {
-    // Logic to check if tenant has exceeded their plan quotas (e.g. AI tokens, Employees)
-    return { allowed: true, remaining: 5000 };
+    const company = await (this.prisma as any).company.findUnique({
+      where: { id: companyId },
+    });
+    if (!company) throw new BadRequestException('Invalid tenant');
+    const usage = this.prisma.getMemoryStoreStats();
+    return {
+      allowed: company.status === 'ACTIVE',
+      metric,
+      used: usage[metric] ?? 0,
+      limit: null,
+    };
   }
 }

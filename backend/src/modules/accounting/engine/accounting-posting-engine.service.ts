@@ -17,11 +17,15 @@ export class AccountingPostingEngine {
     private bre: BreService,
   ) {}
 
-  private getDefaultPostingRules(eventType: string): { description: string; entries: AccountingRuleEntry[] } {
+  private getDefaultPostingRules(eventType: string): {
+    description: string;
+    entries: AccountingRuleEntry[];
+  } {
     switch (eventType) {
       case 'FLIGHT_BOOKING':
         return {
-          description: 'Flight Booking Created - Revenue & Receivable Recognition',
+          description:
+            'Flight Booking Created - Revenue & Receivable Recognition',
           entries: [
             { accountCode: '1200', type: 'DEBIT' }, // Accounts Receivable
             { accountCode: '4010', type: 'CREDIT' }, // Flight Revenue
@@ -29,7 +33,8 @@ export class AccountingPostingEngine {
         };
       case 'HOTEL_BOOKING':
         return {
-          description: 'Hotel Reservation Created - Revenue & Receivable Recognition',
+          description:
+            'Hotel Reservation Created - Revenue & Receivable Recognition',
           entries: [
             { accountCode: '1200', type: 'DEBIT' }, // Accounts Receivable
             { accountCode: '4020', type: 'CREDIT' }, // Hotel Revenue
@@ -122,7 +127,10 @@ export class AccountingPostingEngine {
       data: {
         companyId,
         referenceNumber: journalRef,
-        description: payload.description || rules.description || `Auto-posted ${eventType}`,
+        description:
+          payload.description ||
+          rules.description ||
+          `Auto-posted ${eventType}`,
         sourceType: eventType,
         sourceId: payload.id || payload.bookingId || payload.pnr,
       },

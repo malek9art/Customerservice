@@ -1,32 +1,32 @@
 import { Injectable } from '@nestjs/common';
-import Redis from 'ioredis';
-import { ConfigService } from '@nestjs/config';
+
+interface CacheEntry {
+  value: unknown;
+  expiresAt: number;
+}
 
 @Injectable()
 export class CacheService {
-  private redis: Redis;
-
-  constructor(private config: ConfigService) {
-    // In a real environment, we would connect to the actual Redis instance
-    // this.redis = new Redis(this.config.get('REDIS_URL'));
-    this.redis = {
-      get: async (key: string) => null,
-      set: async (key: string, val: string, mode?: string, duration?: number) =>
-        'OK',
-      del: async (key: string) => 1,
-    } as any;
-  }
+  private readonly entries = new Map<string, CacheEntry>();
 
   async get<T>(key: string): Promise<T | null> {
-    const data = await this.redis.get(key);
-    return data ? JSON.parse(data) : null;
+    const entry = this.entries.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      this.entries.delete(key);
+      return null;
+    }
+    return entry.value as T;
   }
 
-  async set(key: string, value: any, ttlSeconds = 3600): Promise<void> {
-    await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+  async set(key: string, value: unknown, ttlSeconds = 3600): Promise<void> {
+    this.entries.set(key, {
+      value,
+      expiresAt: Date.now() + ttlSeconds * 1000,
+    });
   }
 
   async invalidate(key: string): Promise<void> {
-    await this.redis.del(key);
+    this.entries.delete(key);
   }
 }

@@ -13,20 +13,26 @@ export class AmadeusProvider implements IFlightProvider {
 
   private accessToken: string = '';
   private tokenExpiresAt: number = 0;
+  private readonly searchedOffers = new Map<string, FlightOffer>();
+  private readonly maxCachedOffers = 500;
 
   constructor(private configService: ConfigService) {}
 
   private async getAuthToken(): Promise<string> {
     const apiKey = this.configService.get<string>('AMADEUS_API_KEY');
     const apiSecret = this.configService.get<string>('AMADEUS_API_SECRET');
-    const baseUrl = this.configService.get<string>('AMADEUS_BASE_URL') || 'https://test.api.amadeus.com';
+    const baseUrl =
+      this.configService.get<string>('AMADEUS_BASE_URL') ||
+      'https://test.api.amadeus.com';
 
     if (this.accessToken && Date.now() < this.tokenExpiresAt - 30000) {
       return this.accessToken;
     }
 
     if (!apiKey || !apiSecret) {
-      this.logger.warn('Amadeus API credentials not set, operating in sandbox environment');
+      this.logger.warn(
+        'Amadeus API credentials not set, operating in sandbox environment',
+      );
       this.accessToken = 'sandbox-token-active';
       this.tokenExpiresAt = Date.now() + 3600000;
       return this.accessToken;
@@ -52,16 +58,34 @@ export class AmadeusProvider implements IFlightProvider {
       this.tokenExpiresAt = Date.now() + data.expires_in * 1000;
       return this.accessToken;
     } catch (err) {
-      this.logger.error('Failed to authenticate with Amadeus API, falling back to sandbox mode', err);
+      this.logger.error(
+        'Failed to authenticate with Amadeus API, falling back to sandbox mode',
+        err,
+      );
       this.accessToken = 'sandbox-token-active';
       this.tokenExpiresAt = Date.now() + 3600000;
       return this.accessToken;
     }
   }
 
+  private rememberOffers(offers: FlightOffer[]): FlightOffer[] {
+    for (const offer of offers) {
+      this.searchedOffers.set(offer.id, offer);
+    }
+    while (this.searchedOffers.size > this.maxCachedOffers) {
+      const oldestKey = this.searchedOffers.keys().next().value as
+        string | undefined;
+      if (!oldestKey) break;
+      this.searchedOffers.delete(oldestKey);
+    }
+    return offers;
+  }
+
   async search(criteria: FlightSearchCriteria): Promise<FlightOffer[]> {
     const token = await this.getAuthToken();
-    const baseUrl = this.configService.get<string>('AMADEUS_BASE_URL') || 'https://test.api.amadeus.com';
+    const baseUrl =
+      this.configService.get<string>('AMADEUS_BASE_URL') ||
+      'https://test.api.amadeus.com';
 
     const apiKey = this.configService.get<string>('AMADEUS_API_KEY');
 
@@ -83,13 +107,16 @@ export class AmadeusProvider implements IFlightProvider {
           query.append('returnDate', criteria.returnDate);
         }
 
-        const response = await fetch(`${baseUrl}/v2/shopping/flight-offers?${query.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await fetch(
+          `${baseUrl}/v2/shopping/flight-offers?${query.toString()}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
 
         if (response.ok) {
           const data = await response.json();
-          return (data.data || []).map((item: any) => ({
+          const offers = (data.data || []).map((item: any) => ({
             id: item.id,
             provider: this.name,
             itineraries: item.itineraries,
@@ -100,6 +127,7 @@ export class AmadeusProvider implements IFlightProvider {
             validatingAirline: item.validatingAirlineCodes?.[0] || 'SV',
             fareRules: item.fareRules || item.pricingOptions,
           }));
+          return this.rememberOffers(offers);
         }
       } catch (err) {
         this.logger.error('Amadeus flight search call failed', err);
@@ -107,11 +135,13 @@ export class AmadeusProvider implements IFlightProvider {
     }
 
     // Direct production flight schedule formulation
-    const isSaudiRoute = criteria.destination === 'JED' || criteria.destination === 'MED';
+    const isSaudiRoute =
+      criteria.destination === 'JED' || criteria.destination === 'MED';
     const primaryAirline = isSaudiRoute ? 'SV' : 'QR';
-    const departureStr = criteria.departureDate || new Date().toISOString().split('T')[0];
+    const departureStr =
+      criteria.departureDate || new Date().toISOString().split('T')[0];
 
-    return [
+    const offers: FlightOffer[] = [
       {
         id: `amadeus-offer-${criteria.origin}-${criteria.destination}-1`,
         provider: this.name,
@@ -120,8 +150,14 @@ export class AmadeusProvider implements IFlightProvider {
             duration: 'PT5H30M',
             segments: [
               {
-                departure: { iataCode: criteria.origin, at: `${departureStr}T08:00:00` },
-                arrival: { iataCode: criteria.destination, at: `${departureStr}T13:30:00` },
+                departure: {
+                  iataCode: criteria.origin,
+                  at: `${departureStr}T08:00:00`,
+                },
+                arrival: {
+                  iataCode: criteria.destination,
+                  at: `${departureStr}T13:30:00`,
+                },
                 carrierCode: primaryAirline,
                 number: '108',
                 aircraft: { code: '773' },
@@ -147,8 +183,14 @@ export class AmadeusProvider implements IFlightProvider {
             duration: 'PT6H15M',
             segments: [
               {
-                departure: { iataCode: criteria.origin, at: `${departureStr}T14:00:00` },
-                arrival: { iataCode: criteria.destination, at: `${departureStr}T20:15:00` },
+                departure: {
+                  iataCode: criteria.origin,
+                  at: `${departureStr}T14:00:00`,
+                },
+                arrival: {
+                  iataCode: criteria.destination,
+                  at: `${departureStr}T20:15:00`,
+                },
                 carrierCode: 'EK',
                 number: '802',
                 aircraft: { code: '388' },
@@ -167,11 +209,14 @@ export class AmadeusProvider implements IFlightProvider {
         },
       },
     ];
+    return this.rememberOffers(offers);
   }
 
   async createBooking(offerId: string, passengers: any[]): Promise<any> {
     const token = await this.getAuthToken();
-    const baseUrl = this.configService.get<string>('AMADEUS_BASE_URL') || 'https://test.api.amadeus.com';
+    const baseUrl =
+      this.configService.get<string>('AMADEUS_BASE_URL') ||
+      'https://test.api.amadeus.com';
     const apiKey = this.configService.get<string>('AMADEUS_API_KEY');
 
     if (apiKey && token !== 'sandbox-token-active') {
@@ -183,7 +228,10 @@ export class AmadeusProvider implements IFlightProvider {
             travelers: passengers.map((p, idx) => ({
               id: String(idx + 1),
               dateOfBirth: p.dateOfBirth || '1990-01-01',
-              name: { firstName: p.firstName || 'GUEST', lastName: p.lastName || 'USER' },
+              name: {
+                firstName: p.firstName || 'GUEST',
+                lastName: p.lastName || 'USER',
+              },
               contact: { emailAddress: p.email || 'guest@travelos.ai' },
             })),
           },
@@ -200,12 +248,15 @@ export class AmadeusProvider implements IFlightProvider {
 
         if (response.ok) {
           const resData = await response.json();
-          const pnr = resData.data?.id || resData.data?.associatedRecords?.[0]?.reference;
+          const pnr =
+            resData.data?.id || resData.data?.associatedRecords?.[0]?.reference;
           return {
             pnr,
             price: {
-              total: resData.data?.flightOffers?.[0]?.price?.grandTotal || '650.00',
-              currency: resData.data?.flightOffers?.[0]?.price?.currency || 'USD',
+              total:
+                resData.data?.flightOffers?.[0]?.price?.grandTotal || '650.00',
+              currency:
+                resData.data?.flightOffers?.[0]?.price?.currency || 'USD',
             },
             itineraries: resData.data?.flightOffers?.[0]?.itineraries || [],
             status: 'CONFIRMED',
@@ -216,22 +267,18 @@ export class AmadeusProvider implements IFlightProvider {
       }
     }
 
+    const selectedOffer = this.searchedOffers.get(offerId);
     const pnrHash = Math.random().toString(36).substring(2, 8).toUpperCase();
     return {
       pnr: `AMD${pnrHash}`,
-      price: { total: '650.00', currency: 'USD' },
-      itineraries: [
-        {
-          segments: [{ departure: 'DXB', arrival: 'JED', carrier: 'SV' }],
-        },
-      ],
+      price: selectedOffer?.price || { total: '650.00', currency: 'USD' },
+      itineraries: selectedOffer?.itineraries || [],
       status: 'PNR_CREATED',
       createdAt: new Date(),
     };
   }
 
   async issueTicket(pnr: string): Promise<any> {
-    const token = await this.getAuthToken();
     const ticketPrefix = '157'; // Saudia / Qatar standard GDS prefix
     const ticketNum = `${ticketPrefix}-${Math.floor(1000000000 + Math.random() * 9000000000)}`;
 

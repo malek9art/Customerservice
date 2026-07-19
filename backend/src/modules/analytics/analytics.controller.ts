@@ -1,7 +1,8 @@
-import { Controller, Post, Get, Body, Query, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
+import { AskAnalyticsDto } from './dto/ask-analytics.dto';
 
 @ApiTags('Reports & Business Intelligence')
 @Controller('analytics')
@@ -22,7 +23,7 @@ export class AnalyticsController {
   @ApiHeader({ name: 'x-company-id', required: true })
   async ask(
     @CurrentCompany() companyId: string,
-    @Body() body: { question: string },
+    @Body() body: AskAnalyticsDto,
   ) {
     return this.analyticsService.askCopilot(companyId, body.question);
   }

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { AiOrchestrator } from './orchestrator/ai-orchestrator.engine';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -13,8 +13,28 @@ export class AiAgentService {
     private whatsapp: WhatsappService,
   ) {}
 
+  async getSession(companyId: string, sessionId: string) {
+    const session = await (this.prisma as any).chatSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (!session || session.companyId !== companyId) {
+      throw new NotFoundException('Conversation session not found');
+    }
+    const [messages, actions] = await Promise.all([
+      (this.prisma as any).chatMessage.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'asc' },
+      }),
+      (this.prisma as any).aiActionLog.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    return { ...session, messages, actions };
+  }
+
   async handleIncomingMessage(companyId: string, payload: any) {
-    const { from, text, type, mediaId } = payload;
+    const { from, text, type } = payload;
 
     // 1. Get or Create Session
     let session = await (this.prisma as any).chatSession.findFirst({

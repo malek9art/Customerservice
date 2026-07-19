@@ -7,10 +7,12 @@ import {
   Query,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiHeader } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
+import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
 @ApiTags('Customers CRM')
@@ -21,7 +23,10 @@ export class CustomersController {
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async create(@CurrentCompany() companyId: string, @Body() data: any) {
+  async create(
+    @CurrentCompany() companyId: string,
+    @Body() data: CreateCustomerDto,
+  ) {
     return this.customersService.create(companyId, data);
   }
 
@@ -49,6 +54,7 @@ export class CustomersController {
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    if (!file) throw new BadRequestException('Passport file is required');
     return this.customersService.uploadPassport(
       companyId,
       id,

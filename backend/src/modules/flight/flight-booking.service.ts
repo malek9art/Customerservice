@@ -1,11 +1,19 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 import { FlightProviderRegistry } from './providers/flight-provider.registry';
 import { FlightSearchCriteria } from './interfaces/flight-provider.interface';
 import { AiOrchestrator } from '../ai/ai-orchestrator.service';
 import { BreService } from '../bre/bre.service';
 import { WorkflowService } from '../workflows/workflows.service';
-import { FareRulesEvaluatorService, EvaluationRequest } from './fare-rules-evaluator.service';
+import {
+  FareRulesEvaluatorService,
+  EvaluationRequest,
+} from './fare-rules-evaluator.service';
 import { nanoid } from 'nanoid';
 
 @Injectable()
@@ -57,7 +65,16 @@ export class FlightBookingService {
     offerId: string,
     passengers: any[],
   ) {
-    const provider = this.registry.getProvider(providerName || 'AMADEUS');
+    const customer = await (this.prisma as any).customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!customer || customer.companyId !== companyId) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    const provider = this.registry.getProvider(
+      (providerName || 'AMADEUS').toUpperCase(),
+    );
     const gdsBooking = await provider.createBooking(offerId, passengers);
 
     const internalRef = `FLIGHT-${nanoid(10).toUpperCase()}`;
@@ -94,8 +111,14 @@ export class FlightBookingService {
       where: { id: bookingId },
     });
 
-    if (!booking) {
+    if (!booking || booking.companyId !== companyId) {
       throw new NotFoundException(`Flight booking ${bookingId} not found`);
+    }
+    if (booking.status === 'CANCELLED') {
+      throw new BadRequestException('Cancelled booking cannot be ticketed');
+    }
+    if (booking.status === 'TICKETED') {
+      return booking;
     }
 
     const provider = this.registry.getProvider(booking.provider || 'AMADEUS');
@@ -127,12 +150,23 @@ export class FlightBookingService {
       where: { id: bookingId },
     });
 
-    if (!booking) {
+    if (!booking || booking.companyId !== companyId) {
       throw new NotFoundException(`Flight booking ${bookingId} not found`);
+    }
+    if (booking.status === 'CANCELLED') {
+      return booking;
     }
 
     const provider = this.registry.getProvider(booking.provider || 'AMADEUS');
     await provider.cancelBooking(booking.pnr);
+    const cancelledBooking = await (this.prisma as any).flightBooking.update({
+      where: { id: bookingId },
+      data: {
+        status: 'CANCELLED',
+        cancellationReason: reason || 'Flight cancellation requested',
+        cancelledAt: new Date(),
+      },
+    });
 
     await this.workflow.trigger('flight.booking_cancelled', {
       bookingId: booking.id,
@@ -142,12 +176,7 @@ export class FlightBookingService {
       reason: reason || 'Flight cancellation requested',
     });
 
-    return {
-      success: true,
-      bookingId: booking.id,
-      pnr: booking.pnr,
-      status: 'CANCELLED',
-    };
+    return cancelledBooking;
   }
 
   async getDashboard(companyId: string) {
@@ -155,12 +184,15 @@ export class FlightBookingService {
       where: { companyId },
     });
 
-    const activeBookings = bookings.length;
-    const pendingTicketing = bookings.filter((b) => b.status === 'PNR_CREATED').length;
-    const totalRevenue = bookings.reduce(
-      (sum, b) => sum + (Number(b.totalAmount) || 0),
-      0,
-    );
+    const activeBookings = bookings.filter(
+      (booking) => booking.status !== 'CANCELLED',
+    ).length;
+    const pendingTicketing = bookings.filter(
+      (booking) => booking.status === 'PNR_CREATED',
+    ).length;
+    const totalRevenue = bookings
+      .filter((booking) => booking.status === 'TICKETED')
+      .reduce((sum, booking) => sum + (Number(booking.totalAmount) || 0), 0);
 
     return {
       activeBookings,

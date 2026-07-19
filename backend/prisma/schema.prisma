@@ -110,6 +110,9 @@ model Employee {
   branchId  String?
   branch    Branch?  @relation(fields: [branchId], references: [id])
   fullName  String
+  email     String?
+  role      String   @default("EMPLOYEE")
+  permissions String[] @default([])
   isActive  Boolean  @default(true)
 }
 
@@ -222,6 +225,11 @@ model HotelBooking {
   
   hotelId          String
   hotelName        String
+  hotelImages      String[]       @default([])
+  stars            Int?
+  location         Json?
+  amenities        String[]       @default([])
+  cancellationPolicy String?
   roomDetails      Json           // Room type, count, etc.
   checkIn          DateTime
   checkOut         DateTime
@@ -232,6 +240,8 @@ model HotelBooking {
   guests           Json           // Guest list
   mealPlan         String?
   transfers        Json?
+  cancellationReason String?
+  cancelledAt      DateTime?
   
   packageId        String?        // Link to a Package if part of one
   
@@ -319,6 +329,8 @@ model PilgrimageBooking {
   status           String         @default("PENDING")
   totalAmount      Decimal
   paidAmount       Decimal        @default(0)
+  cancellationReason String?
+  cancelledAt      DateTime?
   
   pilgrims         Pilgrim[]
   
@@ -379,8 +391,16 @@ model Invoice {
   customer         Customer?      @relation(fields: [customerId], references: [id])
   
   number           String         @unique
+  subtotal         Decimal        @default(0)
+  discount         Decimal        @default(0)
+  taxRate          Decimal        @default(0)
   amount           Decimal
   taxAmount        Decimal        @default(0)
+  paidAmount       Decimal        @default(0)
+  balance          Decimal        @default(0)
+  currency         String         @default("USD")
+  sourceType       String?
+  sourceId         String?
   status           String         @default("DRAFT") // DRAFT, SENT, PAID, PARTIAL, VOID
   dueDate          DateTime?
   
@@ -397,11 +417,13 @@ model Payment {
   company          Company        @relation(fields: [companyId], references: [id])
   invoiceId        String?
   invoice          Invoice?       @relation(fields: [invoiceId], references: [id])
+  customerId       String?
   
   amount           Decimal
   method           String         // CASH, BANK_TRANSFER, GATEWAY
   gateway          String?
   transactionId    String?
+  notes            String?
   status           String         @default("COMPLETED")
   
   createdAt        DateTime       @default(now())
@@ -419,6 +441,13 @@ model Pilgrim {
   packageId           String
   package             Package           @relation(fields: [packageId], references: [id])
 
+  fullName             String?
+  gender               String?
+  passportNumber       String?
+  roomNumber           String?
+  roomType             String?
+  busNumber            String?
+  seatNumber           Int?
   medicalInfo         String?
   emergencyContact    String?
   vaccinationStatus   String?           // PENDING, COMPLETED
@@ -470,6 +499,8 @@ model FlightBooking {
   segments         Json           // Flight segments data
   fareDetails      Json
   ticketNumbers    String[]       @default([])
+  cancellationReason String?
+  cancelledAt      DateTime?
   
   assignedEmployeeId String?
   

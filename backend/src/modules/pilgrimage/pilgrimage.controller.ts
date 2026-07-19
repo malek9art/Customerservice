@@ -1,7 +1,23 @@
-import { Controller, Post, Get, Patch, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiHeader, ApiParam } from '@nestjs/swagger';
-import { PilgrimageService, RoomAllocationOptions, BusAllocationOptions } from './pilgrimage.service';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentCompany } from '../../common/decorators/current-company.decorator';
+import {
+  BusAllocationDto,
+  CancelPilgrimageBookingDto,
+  CreatePilgrimageBookingDto,
+  GroupAllocationDto,
+  ModifyPilgrimageBookingDto,
+  RoomAllocationDto,
+} from './dto/pilgrimage.dto';
+import { PilgrimageService } from './pilgrimage.service';
 
 @ApiTags('Pilgrimage Operations (Hajj & Umrah)')
 @Controller('pilgrimage')
@@ -9,11 +25,11 @@ export class PilgrimageController {
   constructor(private readonly pilgrimageService: PilgrimageService) {}
 
   @Post('bookings')
-  @ApiOperation({ summary: 'Create a Hajj or Umrah booking for pilgrims with real-time capacity check' })
+  @ApiOperation({ summary: 'Create Hajj or Umrah booking' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async book(
+  book(
     @CurrentCompany() companyId: string,
-    @Body() body: { customerId: string; packageId: string; pilgrims: any[] },
+    @Body() body: CreatePilgrimageBookingDto,
   ) {
     return this.pilgrimageService.createPilgrimageBooking(
       companyId,
@@ -24,83 +40,68 @@ export class PilgrimageController {
   }
 
   @Post('bookings/:id/cancel')
-  @ApiOperation({ summary: 'Cancel Pilgrimage Booking, restore package capacity, and trigger refund' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  @ApiParam({ name: 'id', description: 'Booking ID' })
-  async cancelBooking(
+  cancelBooking(
     @CurrentCompany() companyId: string,
-    @Param('id') bookingId: string,
-    @Body() body: { reason?: string },
+    @Param('id') id: string,
+    @Body() body: CancelPilgrimageBookingDto,
   ) {
-    return this.pilgrimageService.cancelBooking(companyId, bookingId, body?.reason);
+    return this.pilgrimageService.cancelBooking(companyId, id, body.reason);
   }
 
   @Patch('bookings/:id/modify')
-  @ApiOperation({ summary: 'Modify Pilgrimage Booking details' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  @ApiParam({ name: 'id', description: 'Booking ID' })
-  async modifyBooking(
+  modifyBooking(
     @CurrentCompany() companyId: string,
-    @Param('id') bookingId: string,
-    @Body() body: any,
+    @Param('id') id: string,
+    @Body() body: ModifyPilgrimageBookingDto,
   ) {
-    return this.pilgrimageService.modifyBooking(companyId, bookingId, body);
+    return this.pilgrimageService.modifyBooking(companyId, id, body);
   }
 
   @Post('room-allocation')
-  @ApiOperation({ summary: 'Execute intelligent Pilgrim Room Allocation algorithm' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async allocateRooms(
+  allocateRooms(
     @CurrentCompany() companyId: string,
-    @Body() body: { packageId: string; options?: RoomAllocationOptions },
+    @Body() body: RoomAllocationDto,
   ) {
-    return this.pilgrimageService.allocateRooms(
-      companyId,
-      body.packageId,
-      body.options,
-    );
+    return this.pilgrimageService.allocateRooms(companyId, body.packageId, {
+      maxRoomCapacity: body.maxRoomCapacity,
+    });
   }
 
   @Post('bus-allocation')
-  @ApiOperation({ summary: 'Execute intelligent Pilgrim Bus & Group Allocation algorithm' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async allocateBuses(
+  allocateBuses(
     @CurrentCompany() companyId: string,
-    @Body() body: { packageId: string; options?: BusAllocationOptions },
+    @Body() body: BusAllocationDto,
   ) {
-    return this.pilgrimageService.allocateBuses(
-      companyId,
-      body.packageId,
-      body.options,
-    );
+    return this.pilgrimageService.allocateBuses(companyId, body.packageId, {
+      busCapacity: body.busCapacity,
+    });
   }
 
   @Post('packages/:packageId/capacity-sync')
-  @ApiOperation({ summary: 'Real-time sync of package capacity and remaining slots' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  @ApiParam({ name: 'packageId', description: 'Package ID' })
-  async syncCapacity(
+  syncCapacity(
     @CurrentCompany() companyId: string,
-    @Param('packageId') packageId: string,
+    @Param('packageId') id: string,
   ) {
-    return this.pilgrimageService.syncPackageCapacity(companyId, packageId);
+    return this.pilgrimageService.syncPackageCapacity(companyId, id);
   }
 
   @Post('pilgrims/:pilgrimId/digital-card')
-  @ApiOperation({ summary: 'Generate official PDF Digital Pilgrim Card' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  @ApiParam({ name: 'pilgrimId', description: 'Pilgrim ID' })
-  async generateCard(
+  generateCard(
     @CurrentCompany() companyId: string,
-    @Param('pilgrimId') pilgrimId: string,
+    @Param('pilgrimId') id: string,
   ) {
-    return this.pilgrimageService.generatePilgrimCard(companyId, pilgrimId);
+    return this.pilgrimageService.generatePilgrimCard(companyId, id);
   }
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'Get Pilgrimage Operations Dashboard' })
   @ApiHeader({ name: 'x-company-id', required: true })
-  async getDashboard(
+  getDashboard(
     @CurrentCompany() companyId: string,
     @Query('type') type: string,
   ) {
@@ -108,8 +109,15 @@ export class PilgrimageController {
   }
 
   @Post('allocate-group')
-  @ApiOperation({ summary: 'Manually allocate a pilgrim to a specific group/bus' })
-  async allocate(@Body() body: { pilgrimId: string; groupId: string }) {
-    return this.pilgrimageService.allocateToGroup(body.pilgrimId, body.groupId);
+  @ApiHeader({ name: 'x-company-id', required: true })
+  allocate(
+    @CurrentCompany() companyId: string,
+    @Body() body: GroupAllocationDto,
+  ) {
+    return this.pilgrimageService.allocateToGroup(
+      companyId,
+      body.pilgrimId,
+      body.groupId,
+    );
   }
 }

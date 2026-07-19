@@ -2,20 +2,24 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { HotelBookingService } from './hotel-booking.service';
 import { HotelController } from './hotel.controller';
 import { HotelProviderRegistry } from './providers/hotel-provider.registry';
-import { MockHotelProvider } from './providers/mock-hotel.provider';
+import { StatefulHotelProvider } from './providers/stateful-hotel.provider';
 
 @Module({
   controllers: [HotelController],
-  providers: [HotelBookingService, HotelProviderRegistry, MockHotelProvider],
+  providers: [
+    HotelBookingService,
+    HotelProviderRegistry,
+    StatefulHotelProvider,
+  ],
   exports: [HotelBookingService],
 })
 export class HotelModule implements OnModuleInit {
   constructor(
     private registry: HotelProviderRegistry,
-    private mockProvider: MockHotelProvider,
+    private hotelProvider: StatefulHotelProvider,
   ) {}
 
   onModuleInit() {
-    this.registry.register(this.mockProvider);
+    this.registry.register(this.hotelProvider);
   }
 }

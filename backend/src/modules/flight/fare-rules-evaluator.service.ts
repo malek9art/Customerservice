@@ -48,24 +48,44 @@ export class FareRulesEvaluatorService {
     companyId: string,
     req: EvaluationRequest,
   ): Promise<FareRulesResult> {
-    this.logger.log(`Evaluating fare rules for airline ${req.airlineCode}, class ${req.cabinClass}`);
+    this.logger.log(
+      `Evaluating fare rules for airline ${req.airlineCode}, class ${req.cabinClass}`,
+    );
 
     const breOutcome = await this.bre.evaluate(companyId, 'FARE_RULES', req);
 
     const defaultBaggage =
       req.cabinClass === 'BUSINESS' || req.cabinClass === 'FIRST'
-        ? { pieces: 2, maxWeightKg: 32, description: '2 Check-in Bags up to 32kg each + 15kg Hand Bag' }
+        ? {
+            pieces: 2,
+            maxWeightKg: 32,
+            description: '2 Check-in Bags up to 32kg each + 15kg Hand Bag',
+          }
         : req.cabinClass === 'PREMIUM'
-        ? { pieces: 2, maxWeightKg: 23, description: '2 Check-in Bags up to 23kg each + 10kg Hand Bag' }
-        : { pieces: 1, maxWeightKg: 23, description: '1 Check-in Bag up to 23kg + 7kg Hand Bag' };
+          ? {
+              pieces: 2,
+              maxWeightKg: 23,
+              description: '2 Check-in Bags up to 23kg each + 10kg Hand Bag',
+            }
+          : {
+              pieces: 1,
+              maxWeightKg: 23,
+              description: '1 Check-in Bag up to 23kg + 7kg Hand Bag',
+            };
 
-    const hoursLeft = req.hoursToDeparture !== undefined ? req.hoursToDeparture : 120;
+    const hoursLeft =
+      req.hoursToDeparture !== undefined ? req.hoursToDeparture : 120;
     const isNonRefundable = hoursLeft < 24 && req.cabinClass === 'ECONOMY';
 
-    const penaltyFee = isNonRefundable ? req.basePrice : Math.min(100, req.basePrice * 0.2);
+    const penaltyFee = isNonRefundable
+      ? req.basePrice
+      : Math.min(100, req.basePrice * 0.2);
     const changeFee = Math.min(50, req.basePrice * 0.1);
 
-    const markupRate = breOutcome?.markupPercentage !== undefined ? breOutcome.markupPercentage : 0.05;
+    const markupRate =
+      breOutcome?.markupPercentage !== undefined
+        ? breOutcome.markupPercentage
+        : 0.05;
     const agencyMarkup = req.basePrice * markupRate;
     const finalPrice = req.basePrice + agencyMarkup;
 

@@ -14,7 +14,7 @@ export default function AiCopilotPage() {
     try {
       const res = await TravelOSApi.ai.executeChain(prompt);
       setChainResult(res);
-    } catch (err) {
+    } catch {
       setChainResult({
         response: `تم معالجة وتوثيق طلبك بنجاح! المرجع: CHAIN-CEPVXTXUMW`,
         chainId: 'CHAIN-CEPVXTXUMW',

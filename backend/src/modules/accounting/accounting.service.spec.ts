@@ -25,17 +25,25 @@ describe('Accounting & Financial Ledger System', () => {
     }).compile();
 
     service = module.get<AccountingService>(AccountingService);
-    postingEngine = module.get<AccountingPostingEngine>(AccountingPostingEngine);
-    reconciliationService = module.get<AutoReconciliationService>(AutoReconciliationService);
+    postingEngine = module.get<AccountingPostingEngine>(
+      AccountingPostingEngine,
+    );
+    reconciliationService = module.get<AutoReconciliationService>(
+      AutoReconciliationService,
+    );
     prisma = module.get<PrismaService>(PrismaService);
   });
 
   it('should post balanced double-entry journals for all booking event types', async () => {
-    const journal = await postingEngine.postEvent('comp-id', 'PILGRIMAGE_BOOKING', {
-      id: 'p-book-100',
-      amount: 4500,
-      description: 'Hajj Package Deposit',
-    });
+    const journal = await postingEngine.postEvent(
+      'comp-id',
+      'PILGRIMAGE_BOOKING',
+      {
+        id: 'p-book-100',
+        amount: 4500,
+        description: 'Hajj Package Deposit',
+      },
+    );
 
     expect(journal).toBeDefined();
     expect(journal.referenceNumber).toContain('JRNL-');
@@ -45,8 +53,14 @@ describe('Accounting & Financial Ledger System', () => {
     });
 
     expect(entries).toHaveLength(2);
-    const totalDebit = entries.reduce((s: number, e: any) => s + (Number(e.debit) || 0), 0);
-    const totalCredit = entries.reduce((s: number, e: any) => s + (Number(e.credit) || 0), 0);
+    const totalDebit = entries.reduce(
+      (s: number, e: any) => s + (Number(e.debit) || 0),
+      0,
+    );
+    const totalCredit = entries.reduce(
+      (s: number, e: any) => s + (Number(e.credit) || 0),
+      0,
+    );
 
     expect(totalDebit).toBe(4500);
     expect(totalCredit).toBe(4500);

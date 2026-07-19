@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma.service';
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async log(data: {
@@ -14,9 +16,8 @@ export class AuditService {
     oldValues?: any;
     newValues?: any;
   }) {
-    // This assumes the AuditLog model exists in prisma/schema.prisma
-    // For now, using a safe check or console log if model not synced
-    console.log('Audit Log:', data);
-    // In a real slice, we'd have the AuditLog model in schema.
+    this.logger.log(
+      `${data.action} ${data.entityType}:${data.entityId} company:${data.companyId}`,
+    );
   }
 }

@@ -6,7 +6,17 @@ export class IamService {
   constructor(private prisma: PrismaService) {}
 
   async validatePermission(employeeId: string, permission: string) {
-    // Logic for RBAC validation
-    return true;
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+    });
+    if (!employee || !employee.isActive) return false;
+    const permissions = Array.isArray(employee.permissions)
+      ? employee.permissions
+      : [];
+    return (
+      employee.role === 'ADMIN' ||
+      permissions.includes('*') ||
+      permissions.includes(permission)
+    );
   }
 }

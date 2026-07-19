@@ -23,9 +23,13 @@ describe('Pilot Program Production Hardening & Edge Case Regression Suite', () =
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    autoReconciliationService = moduleFixture.get<AutoReconciliationService>(AutoReconciliationService);
+    autoReconciliationService = moduleFixture.get<AutoReconciliationService>(
+      AutoReconciliationService,
+    );
     pilgrimageService = moduleFixture.get<PilgrimageService>(PilgrimageService);
-    postingEngine = moduleFixture.get<AccountingPostingEngine>(AccountingPostingEngine);
+    postingEngine = moduleFixture.get<AccountingPostingEngine>(
+      AccountingPostingEngine,
+    );
     memoryService = moduleFixture.get<AiMemoryService>(AiMemoryService);
     prisma = moduleFixture.get<PrismaService>(PrismaService);
   });
@@ -48,26 +52,29 @@ describe('Pilot Program Production Hardening & Edge Case Regression Suite', () =
     });
 
     // Send statement with trailing spaces and lower-case ref + zero amount item
-    const recon = await autoReconciliationService.processBankStatement(companyId, {
-      bankName: 'SNB Al Ahli',
-      accountNumber: 'SA987654321',
-      transactions: [
-        {
-          bankReference: 'TX-SPACED-11',
-          senderName: 'MALEK AHMED',
-          amount: 0, // Should be safely ignored
-          transactionDate: '2026-07-18',
-          paymentReference: ' inv-2026-spaced ',
-        },
-        {
-          bankReference: 'TX-SPACED-22',
-          senderName: 'MALEK AHMED',
-          amount: 3500,
-          transactionDate: '2026-07-18',
-          paymentReference: ' inv-2026-spaced ', // Should match cleanly
-        },
-      ],
-    });
+    const recon = await autoReconciliationService.processBankStatement(
+      companyId,
+      {
+        bankName: 'SNB Al Ahli',
+        accountNumber: 'SA987654321',
+        transactions: [
+          {
+            bankReference: 'TX-SPACED-11',
+            senderName: 'MALEK AHMED',
+            amount: 0, // Should be safely ignored
+            transactionDate: '2026-07-18',
+            paymentReference: ' inv-2026-spaced ',
+          },
+          {
+            bankReference: 'TX-SPACED-22',
+            senderName: 'MALEK AHMED',
+            amount: 3500,
+            transactionDate: '2026-07-18',
+            paymentReference: ' inv-2026-spaced ', // Should match cleanly
+          },
+        ],
+      },
+    );
 
     expect(recon.summary.totalProcessed).toBe(1);
     expect(recon.results[0].status).toBe('AUTOMATED_MATCH');
@@ -78,6 +85,17 @@ describe('Pilot Program Production Hardening & Edge Case Regression Suite', () =
     const companyId = 'comp-id';
     const pkgId = 'pkg-single-room-test';
 
+    await (prisma as any).package.create({
+      data: {
+        id: pkgId,
+        companyId,
+        name: 'Single Room Test Package',
+        type: 'UMRAH',
+        capacity: 4,
+        remainingSlots: 3,
+        basePrice: 1000,
+      },
+    });
     await (prisma as any).pilgrim.create({
       data: {
         id: 'pilgrim-lonely-1',
@@ -88,9 +106,13 @@ describe('Pilot Program Production Hardening & Edge Case Regression Suite', () =
       },
     });
 
-    const roomAllocation = await pilgrimageService.allocateRooms(companyId, pkgId, {
-      maxRoomCapacity: 4,
-    });
+    const roomAllocation = await pilgrimageService.allocateRooms(
+      companyId,
+      pkgId,
+      {
+        maxRoomCapacity: 4,
+      },
+    );
 
     expect(roomAllocation.summary.totalPilgrims).toBe(1);
     expect(roomAllocation.rooms).toHaveLength(1);
@@ -111,7 +133,9 @@ describe('Pilot Program Production Hardening & Edge Case Regression Suite', () =
     const prompt1 = 'Search Umrah Ramadan Packages ';
     const prompt2 = 'search umrah ramadan packages';
 
-    memoryService.setCachedResponse(prompt1, companyId, { data: 'ramadan-offers' });
+    memoryService.setCachedResponse(prompt1, companyId, {
+      data: 'ramadan-offers',
+    });
     const cached = memoryService.getCachedResponse(prompt2, companyId);
 
     expect(cached).toBeDefined();

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { IHotelProvider } from '../interfaces/hotel-provider.interface';
 
 @Injectable()
@@ -12,7 +12,7 @@ export class HotelProviderRegistry {
   getProvider(name: string): IHotelProvider {
     const provider = this.providers.get(name);
     if (!provider) {
-      throw new Error(`Hotel provider ${name} not found`);
+      throw new BadRequestException(`Hotel provider ${name} not found`);
     }
     return provider;
   }

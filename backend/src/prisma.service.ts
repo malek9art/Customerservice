@@ -1,8 +1,15 @@
-import { Injectable, OnModuleInit, INestApplication } from '@nestjs/common';
+import {
+  Injectable,
+  INestApplication,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class PrismaService implements OnModuleInit {
+  private readonly logger = new Logger(PrismaService.name);
+
   // Stateful in-memory stores for testing and execution without native Prisma binaries
   private stores: Record<string, Map<string, any>> = {
     company: new Map(),
@@ -15,6 +22,7 @@ export class PrismaService implements OnModuleInit {
     passportInventory: new Map(),
     passportLog: new Map(),
     nationalIdentity: new Map(),
+    familyMember: new Map(),
     hotelBooking: new Map(),
     package: new Map(),
     itineraryItem: new Map(),
@@ -73,18 +81,85 @@ export class PrismaService implements OnModuleInit {
 
     // Seed default accounts for double entry accounting
     const accounts = [
-      { id: 'acc-cash', companyId: 'comp-id', code: '1010', name: 'Cash and Bank', type: 'ASSET', balance: 100000 },
-      { id: 'acc-ar', companyId: 'comp-id', code: '1200', name: 'Accounts Receivable', type: 'ASSET', balance: 50000 },
-      { id: 'acc-flight-rev', companyId: 'comp-id', code: '4010', name: 'Flight Revenue', type: 'REVENUE', balance: 0 },
-      { id: 'acc-hotel-rev', companyId: 'comp-id', code: '4020', name: 'Hotel Revenue', type: 'REVENUE', balance: 0 },
-      { id: 'acc-pilgrim-rev', companyId: 'comp-id', code: '4030', name: 'Pilgrimage Revenue', type: 'REVENUE', balance: 0 },
-      { id: 'acc-visa-rev', companyId: 'comp-id', code: '4040', name: 'Visa Processing Revenue', type: 'REVENUE', balance: 0 },
-      { id: 'acc-ap-airlines', companyId: 'comp-id', code: '2010', name: 'Airlines Payable', type: 'LIABILITY', balance: 0 },
-      { id: 'acc-ap-suppliers', companyId: 'comp-id', code: '2020', name: 'Suppliers Payable', type: 'LIABILITY', balance: 0 },
-      { id: 'acc-suspense', companyId: 'comp-id', code: '2090', name: 'Unreconciled Bank Suspense', type: 'LIABILITY', balance: 0 },
+      {
+        id: 'acc-cash',
+        companyId: 'comp-id',
+        code: '1010',
+        name: 'Cash and Bank',
+        type: 'ASSET',
+        balance: 100000,
+      },
+      {
+        id: 'acc-ar',
+        companyId: 'comp-id',
+        code: '1200',
+        name: 'Accounts Receivable',
+        type: 'ASSET',
+        balance: 50000,
+      },
+      {
+        id: 'acc-flight-rev',
+        companyId: 'comp-id',
+        code: '4010',
+        name: 'Flight Revenue',
+        type: 'REVENUE',
+        balance: 0,
+      },
+      {
+        id: 'acc-hotel-rev',
+        companyId: 'comp-id',
+        code: '4020',
+        name: 'Hotel Revenue',
+        type: 'REVENUE',
+        balance: 0,
+      },
+      {
+        id: 'acc-pilgrim-rev',
+        companyId: 'comp-id',
+        code: '4030',
+        name: 'Pilgrimage Revenue',
+        type: 'REVENUE',
+        balance: 0,
+      },
+      {
+        id: 'acc-visa-rev',
+        companyId: 'comp-id',
+        code: '4040',
+        name: 'Visa Processing Revenue',
+        type: 'REVENUE',
+        balance: 0,
+      },
+      {
+        id: 'acc-ap-airlines',
+        companyId: 'comp-id',
+        code: '2010',
+        name: 'Airlines Payable',
+        type: 'LIABILITY',
+        balance: 0,
+      },
+      {
+        id: 'acc-ap-suppliers',
+        companyId: 'comp-id',
+        code: '2020',
+        name: 'Suppliers Payable',
+        type: 'LIABILITY',
+        balance: 0,
+      },
+      {
+        id: 'acc-suspense',
+        companyId: 'comp-id',
+        code: '2090',
+        name: 'Unreconciled Bank Suspense',
+        type: 'LIABILITY',
+        balance: 0,
+      },
     ];
     for (const acc of accounts) {
-      this.stores.account.set(acc.id, { ...acc, createdAt: new Date(), updatedAt: new Date() });
+      this.stores.account.set(acc.id, {
+        ...acc,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
     }
   }
 
@@ -93,7 +168,7 @@ export class PrismaService implements OnModuleInit {
       return Object.entries(where).every(([k, v]) => {
         if (v === undefined) return true;
         if (k === 'OR' && Array.isArray(v)) {
-          return (v as any[]).some((cond: any) =>
+          return v.some((cond: any) =>
             Object.entries(cond).every(([ck, cv]: [string, any]) => {
               if (cv === undefined) return true;
               if (typeof cv === 'object' && cv !== null && 'contains' in cv) {
@@ -137,9 +212,8 @@ export class PrismaService implements OnModuleInit {
   }
 
   private createGenericModelStore(entityName: string) {
-    const store = this.stores[entityName] || (this.stores[entityName] = new Map());
-
-    const self = this;
+    const store =
+      this.stores[entityName] || (this.stores[entityName] = new Map());
 
     return {
       findUnique: async (args: any) => {
@@ -155,12 +229,20 @@ export class PrismaService implements OnModuleInit {
             if (typeof value === 'object' && value !== null) {
               // Handle composite keys e.g. companyId_code
               const matches = entries.find((item) =>
-                Object.entries(value as Record<string, any>).every(([k, v]) => item[k] === v),
+                Object.entries(value as Record<string, any>).every(
+                  ([k, v]) => item[k] === v,
+                ),
               );
-              if (matches) { record = matches; break; }
+              if (matches) {
+                record = matches;
+                break;
+              }
             } else {
               const matches = entries.find((item) => item[key] === value);
-              if (matches) { record = matches; break; }
+              if (matches) {
+                record = matches;
+                break;
+              }
             }
           }
         }
@@ -170,20 +252,20 @@ export class PrismaService implements OnModuleInit {
       findFirst: async (args: any) => {
         let entries = Array.from(store.values());
         if (args?.where) {
-          entries = self.applyWhere(entries, args.where);
+          entries = this.applyWhere(entries, args.where);
         }
         if (args?.orderBy) {
-          entries = self.applyOrderBy(entries, args.orderBy);
+          entries = this.applyOrderBy(entries, args.orderBy);
         }
         return entries[0] || null;
       },
       findMany: async (args: any) => {
         let entries = Array.from(store.values());
         if (args?.where) {
-          entries = self.applyWhere(entries, args.where);
+          entries = this.applyWhere(entries, args.where);
         }
         if (args?.orderBy) {
-          entries = self.applyOrderBy(entries, args.orderBy);
+          entries = this.applyOrderBy(entries, args.orderBy);
         }
         if (args?.skip) {
           entries = entries.slice(args.skip);
@@ -204,7 +286,10 @@ export class PrismaService implements OnModuleInit {
 
         // Handle Decimal fields if mul or numeric operations exist
         if (record.basePrice !== undefined) {
-          const val = typeof record.basePrice === 'number' ? record.basePrice : Number(record.basePrice) || 0;
+          const val =
+            typeof record.basePrice === 'number'
+              ? record.basePrice
+              : Number(record.basePrice) || 0;
           record.basePrice = {
             mul: (n: number) => val * n,
             toNumber: () => val,
@@ -220,7 +305,8 @@ export class PrismaService implements OnModuleInit {
         let existing = id ? store.get(id) : null;
         if (!existing) {
           // search by criteria
-          existing = await self.createGenericModelStore(entityName).findUnique(args);
+          existing =
+            await this.createGenericModelStore(entityName).findUnique(args);
         }
         if (!existing) {
           existing = { id: id || uuidv4() };
@@ -231,7 +317,11 @@ export class PrismaService implements OnModuleInit {
           for (const [k, v] of Object.entries(args.data)) {
             if (typeof v === 'object' && v !== null && 'decrement' in v) {
               data[k] = (data[k] || 0) - (v as any).decrement;
-            } else if (typeof v === 'object' && v !== null && 'increment' in v) {
+            } else if (
+              typeof v === 'object' &&
+              v !== null &&
+              'increment' in v
+            ) {
               data[k] = (data[k] || 0) + (v as any).increment;
             } else {
               data[k] = v;
@@ -243,7 +333,7 @@ export class PrismaService implements OnModuleInit {
         return data;
       },
       upsert: async (args: any) => {
-        const model = self.createGenericModelStore(entityName);
+        const model = this.createGenericModelStore(entityName);
         const existing = await model.findUnique({ where: args.where });
         if (existing) {
           return model.update({ where: args.where, data: args.update });
@@ -260,7 +350,7 @@ export class PrismaService implements OnModuleInit {
       deleteMany: async (args: any) => {
         let entries = Array.from(store.values());
         if (args?.where) {
-          entries = self.applyWhere(entries, args.where);
+          entries = this.applyWhere(entries, args.where);
         }
         let count = 0;
         for (const entry of entries) {
@@ -272,7 +362,7 @@ export class PrismaService implements OnModuleInit {
       count: async (args: any) => {
         let entries = Array.from(store.values());
         if (args?.where) {
-          entries = self.applyWhere(entries, args.where);
+          entries = this.applyWhere(entries, args.where);
         }
         return entries.length;
       },
@@ -280,44 +370,121 @@ export class PrismaService implements OnModuleInit {
   }
 
   // Define property getters for all Prisma models
-  get company() { return this.createGenericModelStore('company'); }
-  get subscriptionPlan() { return this.createGenericModelStore('subscriptionPlan'); }
-  get subscription() { return this.createGenericModelStore('subscription'); }
-  get saasInvoice() { return this.createGenericModelStore('saasInvoice'); }
-  get branch() { return this.createGenericModelStore('branch'); }
-  get employee() { return this.createGenericModelStore('employee'); }
-  get customer() { return this.createGenericModelStore('customer'); }
+  get company() {
+    return this.createGenericModelStore('company');
+  }
+  get subscriptionPlan() {
+    return this.createGenericModelStore('subscriptionPlan');
+  }
+  get subscription() {
+    return this.createGenericModelStore('subscription');
+  }
+  get saasInvoice() {
+    return this.createGenericModelStore('saasInvoice');
+  }
+  get branch() {
+    return this.createGenericModelStore('branch');
+  }
+  get employee() {
+    return this.createGenericModelStore('employee');
+  }
+  get customer() {
+    return this.createGenericModelStore('customer');
+  }
   // passportInventory is the canonical model; passport is an alias for backward compatibility
-  get passportInventory() { return this.createGenericModelStore('passportInventory'); }
-  get passport() { return this.createGenericModelStore('passportInventory'); }
-  get passportLog() { return this.createGenericModelStore('passportLog'); }
-  get nationalIdentity() { return this.createGenericModelStore('nationalIdentity'); }
-  get hotelBooking() { return this.createGenericModelStore('hotelBooking'); }
-  get package() { return this.createGenericModelStore('package'); }
-  get itineraryItem() { return this.createGenericModelStore('itineraryItem'); }
-  get pilgrimageGroup() { return this.createGenericModelStore('pilgrimageGroup'); }
-  get pilgrimageBooking() { return this.createGenericModelStore('pilgrimageBooking'); }
-  get pilgrim() { return this.createGenericModelStore('pilgrim'); }
-  get account() { return this.createGenericModelStore('account'); }
-  get journal() { return this.createGenericModelStore('journal'); }
-  get journalEntry() { return this.createGenericModelStore('journalEntry'); }
-  get invoice() { return this.createGenericModelStore('invoice'); }
-  get payment() { return this.createGenericModelStore('payment'); }
-  get flightBooking() { return this.createGenericModelStore('flightBooking'); }
-  get visaRecord() { return this.createGenericModelStore('visaRecord'); }
-  get transaction() { return this.createGenericModelStore('transaction'); }
-  get activityLog() { return this.createGenericModelStore('activityLog'); }
-  get document() { return this.createGenericModelStore('document'); }
-  get businessRule() { return this.createGenericModelStore('businessRule'); }
-  get chatSession() { return this.createGenericModelStore('chatSession'); }
-  get chatMessage() { return this.createGenericModelStore('chatMessage'); }
-  get report() { return this.createGenericModelStore('report'); }
-  get analyticsSnapshot() { return this.createGenericModelStore('analyticsSnapshot'); }
-  get aiActionLog() { return this.createGenericModelStore('aiActionLog'); }
-
-  async onModuleInit() {
-    console.log('Stateful Prisma Memory Store initialized');
+  get passportInventory() {
+    return this.createGenericModelStore('passportInventory');
+  }
+  get passport() {
+    return this.createGenericModelStore('passportInventory');
+  }
+  get passportLog() {
+    return this.createGenericModelStore('passportLog');
+  }
+  get nationalIdentity() {
+    return this.createGenericModelStore('nationalIdentity');
+  }
+  get familyMember() {
+    return this.createGenericModelStore('familyMember');
+  }
+  get hotelBooking() {
+    return this.createGenericModelStore('hotelBooking');
+  }
+  get package() {
+    return this.createGenericModelStore('package');
+  }
+  get itineraryItem() {
+    return this.createGenericModelStore('itineraryItem');
+  }
+  get pilgrimageGroup() {
+    return this.createGenericModelStore('pilgrimageGroup');
+  }
+  get pilgrimageBooking() {
+    return this.createGenericModelStore('pilgrimageBooking');
+  }
+  get pilgrim() {
+    return this.createGenericModelStore('pilgrim');
+  }
+  get account() {
+    return this.createGenericModelStore('account');
+  }
+  get journal() {
+    return this.createGenericModelStore('journal');
+  }
+  get journalEntry() {
+    return this.createGenericModelStore('journalEntry');
+  }
+  get invoice() {
+    return this.createGenericModelStore('invoice');
+  }
+  get payment() {
+    return this.createGenericModelStore('payment');
+  }
+  get flightBooking() {
+    return this.createGenericModelStore('flightBooking');
+  }
+  get visaRecord() {
+    return this.createGenericModelStore('visaRecord');
+  }
+  get transaction() {
+    return this.createGenericModelStore('transaction');
+  }
+  get activityLog() {
+    return this.createGenericModelStore('activityLog');
+  }
+  get document() {
+    return this.createGenericModelStore('document');
+  }
+  get businessRule() {
+    return this.createGenericModelStore('businessRule');
+  }
+  get chatSession() {
+    return this.createGenericModelStore('chatSession');
+  }
+  get chatMessage() {
+    return this.createGenericModelStore('chatMessage');
+  }
+  get report() {
+    return this.createGenericModelStore('report');
+  }
+  get analyticsSnapshot() {
+    return this.createGenericModelStore('analyticsSnapshot');
+  }
+  get aiActionLog() {
+    return this.createGenericModelStore('aiActionLog');
   }
 
-  async enableShutdownHooks(app: INestApplication) {}
+  getMemoryStoreStats() {
+    return Object.fromEntries(
+      Object.entries(this.stores).map(([model, store]) => [model, store.size]),
+    );
+  }
+
+  onModuleInit() {
+    this.logger.log('Stateful Prisma Memory Store initialized');
+  }
+
+  enableShutdownHooks(app: INestApplication) {
+    void app;
+  }
 }

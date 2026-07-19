@@ -13,7 +13,7 @@ export class BreService {
     });
 
     for (const rule of rules) {
-      const r = rule as any;
+      const r = rule;
       if (jsonLogic.apply(r.conditions, data)) {
         return r.outcomes;
       }

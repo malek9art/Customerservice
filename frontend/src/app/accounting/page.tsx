@@ -33,7 +33,7 @@ export default function AccountingPage() {
 
       const res = await TravelOSApi.accounting.processBankStatement(payload);
       setReconResult(res);
-    } catch (err) {
+    } catch {
       setReconResult({
         summary: { totalProcessed: 1, autoMatchedCount: 1, needsReviewCount: 0, unmatchedCount: 0, totalAmount: amount },
         results: [

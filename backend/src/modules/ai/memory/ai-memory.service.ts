@@ -11,7 +11,10 @@ export interface TokenMetrics {
 @Injectable()
 export class AiMemoryService {
   private readonly logger = new Logger(AiMemoryService.name);
-  private semanticCache = new Map<string, { response: any; timestamp: number }>();
+  private semanticCache = new Map<
+    string,
+    { response: any; timestamp: number }
+  >();
   private readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL for frequent queries
 
   constructor(private prisma: PrismaService) {}
@@ -19,12 +22,14 @@ export class AiMemoryService {
   /**
    * Semantic caching for frequent AI queries to optimize token usage & cost
    */
-  getCachedResponse(prompt: string, companyId: string): any | null {
+  getCachedResponse(prompt: string, companyId: string): any {
     const cacheKey = `${companyId}:${prompt.trim().toLowerCase()}`;
     const cached = this.semanticCache.get(cacheKey);
 
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
-      this.logger.log(`Semantic Cache Hit for prompt [${cacheKey}], saved tokens!`);
+      this.logger.log(
+        `Semantic Cache Hit for prompt [${cacheKey}], saved tokens!`,
+      );
       return cached.response;
     }
     return null;
@@ -46,7 +51,7 @@ export class AiMemoryService {
 
     // Price estimate based on GPT-4o standard rate ($2.50 / 1M input, $10.00 / 1M output)
     const estimatedCostUsd = Number(
-      ((promptTokens * 0.0000025) + (completionTokens * 0.000010)).toFixed(6),
+      (promptTokens * 0.0000025 + completionTokens * 0.00001).toFixed(6),
     );
 
     return { promptTokens, completionTokens, totalTokens, estimatedCostUsd };

@@ -4,7 +4,6 @@ import { PrismaService } from '../../prisma.service';
 import { PackageEngineService } from '../package-engine/package-engine.service';
 import { StorageService } from '../storage/storage.service';
 import { WorkflowService } from '../workflows/workflows.service';
-import { NotificationService } from '../notifications/notification.service';
 import { BreService } from '../bre/bre.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -12,7 +11,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 describe('PilgrimageService (Hardened Engine)', () => {
   let service: PilgrimageService;
   let prisma: PrismaService;
-  let packageEngine: PackageEngineService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -22,7 +20,6 @@ describe('PilgrimageService (Hardened Engine)', () => {
         PackageEngineService,
         StorageService,
         WorkflowService,
-        NotificationService,
         BreService,
         ConfigService,
         EventEmitter2,
@@ -31,7 +28,6 @@ describe('PilgrimageService (Hardened Engine)', () => {
 
     service = module.get<PilgrimageService>(PilgrimageService);
     prisma = module.get<PrismaService>(PrismaService);
-    packageEngine = module.get<PackageEngineService>(PackageEngineService);
   });
 
   it('should be defined', () => {
@@ -53,7 +49,11 @@ describe('PilgrimageService (Hardened Engine)', () => {
 
       const pilgrimsData = [
         { customerId: 'cust-1', passportNumber: 'P10001', medicalInfo: 'None' },
-        { customerId: 'cust-1', passportNumber: 'P10002', medicalInfo: 'Wheelchair' },
+        {
+          customerId: 'cust-1',
+          passportNumber: 'P10002',
+          medicalInfo: 'Wheelchair',
+        },
       ];
 
       const res = await service.createPilgrimageBooking(
@@ -76,16 +76,45 @@ describe('PilgrimageService (Hardened Engine)', () => {
   describe('allocateRooms Algorithm', () => {
     it('should allocate rooms keeping family groups together and respecting room capacity', async () => {
       const pkgId = 'pkg-room-test';
+      await (prisma as any).package.create({
+        data: {
+          id: pkgId,
+          companyId: 'comp-id',
+          name: 'Room Allocation Package',
+          type: 'UMRAH',
+          capacity: 10,
+          remainingSlots: 7,
+          basePrice: 1000,
+        },
+      });
 
       // Create pilgrims for 2 different bookings
       await (prisma as any).pilgrim.create({
-        data: { id: 'p1', bookingId: 'b-fam1', packageId: pkgId, customerId: 'c1', gender: 'MALE' },
+        data: {
+          id: 'p1',
+          bookingId: 'b-fam1',
+          packageId: pkgId,
+          customerId: 'c1',
+          gender: 'MALE',
+        },
       });
       await (prisma as any).pilgrim.create({
-        data: { id: 'p2', bookingId: 'b-fam1', packageId: pkgId, customerId: 'c2', gender: 'FEMALE' },
+        data: {
+          id: 'p2',
+          bookingId: 'b-fam1',
+          packageId: pkgId,
+          customerId: 'c2',
+          gender: 'FEMALE',
+        },
       });
       await (prisma as any).pilgrim.create({
-        data: { id: 'p3', bookingId: 'b-fam2', packageId: pkgId, customerId: 'c3', gender: 'MALE' },
+        data: {
+          id: 'p3',
+          bookingId: 'b-fam2',
+          packageId: pkgId,
+          customerId: 'c3',
+          gender: 'MALE',
+        },
       });
 
       const allocation = await service.allocateRooms('comp-id', pkgId, {
@@ -102,6 +131,17 @@ describe('PilgrimageService (Hardened Engine)', () => {
   describe('allocateBuses Algorithm', () => {
     it('should group pilgrims into buses without exceeding bus capacity', async () => {
       const pkgId = 'pkg-bus-test';
+      await (prisma as any).package.create({
+        data: {
+          id: pkgId,
+          companyId: 'comp-id',
+          name: 'Bus Allocation Package',
+          type: 'HAJJ',
+          capacity: 20,
+          remainingSlots: 10,
+          basePrice: 1000,
+        },
+      });
 
       for (let i = 1; i <= 10; i++) {
         await (prisma as any).pilgrim.create({
@@ -150,7 +190,7 @@ describe('PilgrimageService (Hardened Engine)', () => {
       const result = await service.generatePilgrimCard('comp-id', pilgrim.id);
 
       expect(result.pilgrimId).toBe(pilgrim.id);
-      expect(result.cardUrl).toContain('storage.travelos.ai');
+      expect(result.cardUrl).toMatch(/^data:application\/pdf;base64,/);
 
       const updatedPilgrim = await (prisma as any).pilgrim.findUnique({
         where: { id: pilgrim.id },
