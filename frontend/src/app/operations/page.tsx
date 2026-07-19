@@ -107,6 +107,8 @@ export default function OperationsDashboard() {
   const [hotelCancellationReason, setHotelCancellationReason] = useState('طلب إلغاء من العميل');
   const [packages, setPackages] = useState<TravelPackage[]>([]);
   const [editingPackageId, setEditingPackageId] = useState('');
+  const [pilgrimagePackageId, setPilgrimagePackageId] = useState('');
+  const [pilgrimageResult, setPilgrimageResult] = useState('');
 
   const [customerForm, setCustomerForm] = useState({
     fullName: '',
@@ -159,6 +161,7 @@ export default function OperationsDashboard() {
     lastName: '',
     email: '',
   });
+  const [pilgrimForm, setPilgrimForm] = useState({ fullName: '', gender: 'MALE', passportNumber: '', medicalInfo: '', emergencyContact: '' });
   const [packageForm, setPackageForm] = useState({
     name: '', type: 'TOURISM', season: '', description: '', startDate: '2026-10-01',
     endDate: '2026-10-10', basePrice: 1500, currency: 'USD', capacity: 30, status: 'DRAFT',
@@ -553,6 +556,31 @@ export default function OperationsDashboard() {
     });
   };
 
+  const createPilgrimageBooking = (event: FormEvent) => {
+    event.preventDefault(); if (!selectedCustomer) return;
+    void runTask('book-pilgrimage', async () => {
+      const result = await TravelOSApi.pilgrimage.createBooking({ customerId: selectedCustomer.id, packageId: pilgrimagePackageId, pilgrims: [{ ...pilgrimForm, passportNumber: pilgrimForm.passportNumber || undefined, medicalInfo: pilgrimForm.medicalInfo || undefined, emergencyContact: pilgrimForm.emergencyContact || undefined }] });
+      await refreshCustomer(selectedCustomer.id); setPackages(await TravelOSApi.packages.list());
+      setPilgrimageResult(`تم إنشاء الحجز ${result.booking.id} وخصم مقعد تلقائياً.`);
+    });
+  };
+  const runPilgrimageAllocation = (kind: 'rooms' | 'buses') => {
+    if (!pilgrimagePackageId) return;
+    void runTask(`allocate-${kind}`, async () => {
+      const result = kind === 'rooms' ? await TravelOSApi.pilgrimage.allocateRooms(pilgrimagePackageId, 4) : await TravelOSApi.pilgrimage.allocateBuses(pilgrimagePackageId, 45);
+      if (selectedCustomer) await refreshCustomer(selectedCustomer.id);
+      setPilgrimageResult(`${kind === 'rooms' ? 'تم تخصيص الغرف' : 'تم توزيع المجموعات والحافلات'}: ${JSON.stringify(result)}`);
+    });
+  };
+  const issuePilgrimCard = (pilgrimId: string) => {
+    if (!selectedCustomer) return;
+    void runTask(`card-${pilgrimId}`, async () => { const result = await TravelOSApi.pilgrimage.generatePilgrimCard(pilgrimId); await refreshCustomer(selectedCustomer.id); setPilgrimageResult(`تم إصدار البطاقة: ${result.cardUrl}`); });
+  };
+  const cancelPilgrimage = (bookingId: string) => {
+    if (!selectedCustomer) return;
+    void runTask(`cancel-pilgrimage-${bookingId}`, async () => { await TravelOSApi.pilgrimage.cancelBooking(bookingId, 'طلب إلغاء من العميل'); await refreshCustomer(selectedCustomer.id); setPackages(await TravelOSApi.packages.list()); setPilgrimageResult('تم الإلغاء وإعادة المقاعد إلى الباقة.'); });
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl space-y-6">
@@ -665,6 +693,7 @@ export default function OperationsDashboard() {
                       <span className="rounded-full bg-sky-50 px-3 py-1.5 text-sky-700">{selectedCustomer.visas?.length || 0} تأشيرة</span>
                       <span className="rounded-full bg-violet-50 px-3 py-1.5 text-violet-700">{selectedCustomer.flightBookings?.length || 0} رحلة</span>
                       <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">{selectedCustomer.hotelBookings?.length || 0} فندق</span>
+                      <span className="rounded-full bg-teal-50 px-3 py-1.5 text-teal-700">{selectedCustomer.pilgrimageBookings?.length || 0} حج/عمرة</span>
                     </div>
                   </div>
                   {selectedCustomer.aiInsights && (
@@ -1100,6 +1129,21 @@ export default function OperationsDashboard() {
                     {packages.map((pkg) => <article key={pkg.id} className="rounded-xl border border-slate-200 p-4"><div className="flex justify-between gap-3"><div><h4 className="font-black">{pkg.name}</h4><p className="text-xs text-slate-500">{pkg.type} · {pkg.durationDays} أيام · {pkg.status}</p></div><strong>{String(pkg.basePrice)} {pkg.currency}</strong></div><div className="mt-3 h-2 overflow-hidden rounded bg-slate-100"><div className="h-full bg-indigo-600" style={{ width: `${Math.max(0, Math.min(100, (pkg.remainingSlots / pkg.capacity) * 100))}%` }} /></div><p className="mt-2 text-xs">المتاح {pkg.remainingSlots} من {pkg.capacity} · الحجوزات {pkg.capacity - pkg.remainingSlots}</p><div className="mt-3 flex gap-2"><button type="button" onClick={() => editPackage(pkg)} className={primaryButton}>تعديل التفاصيل</button><button type="button" onClick={() => changePackageCapacity(pkg, pkg.capacity + 10)} className="rounded-xl border px-3 py-2 text-sm font-bold">زيادة السعة +10</button></div></article>)}
                     {!packages.length && <p className="text-sm text-slate-400">لا توجد باقات بعد.</p>}
                   </div>
+                </Panel>
+
+                <Panel title="عمليات الحج والعمرة" description="احجز الباقة، أضف الحجاج، ثم نفّذ التسكين والنقل والبطاقات من Customer 360.">
+                  <form onSubmit={createPilgrimageBooking} className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <Field label="الباقة *"><select required className={inputClass} value={pilgrimagePackageId} onChange={(e) => setPilgrimagePackageId(e.target.value)}><option value="">اختر باقة حج أو عمرة</option>{packages.filter((pkg) => ['HAJJ','UMRAH'].includes(pkg.type) && pkg.status !== 'CANCELLED').map((pkg) => <option key={pkg.id} value={pkg.id}>{pkg.name} — متاح {pkg.remainingSlots}</option>)}</select></Field>
+                    <Field label="اسم الحاج *"><input required className={inputClass} value={pilgrimForm.fullName} onChange={(e) => setPilgrimForm({ ...pilgrimForm, fullName: e.target.value })} /></Field>
+                    <Field label="الجنس"><select className={inputClass} value={pilgrimForm.gender} onChange={(e) => setPilgrimForm({ ...pilgrimForm, gender: e.target.value })}><option value="MALE">ذكر</option><option value="FEMALE">أنثى</option></select></Field>
+                    <Field label="رقم الجواز"><input className={inputClass} value={pilgrimForm.passportNumber} onChange={(e) => setPilgrimForm({ ...pilgrimForm, passportNumber: e.target.value })} /></Field>
+                    <Field label="الحالة الطبية"><input className={inputClass} value={pilgrimForm.medicalInfo} onChange={(e) => setPilgrimForm({ ...pilgrimForm, medicalInfo: e.target.value })} /></Field>
+                    <Field label="اتصال الطوارئ"><input className={inputClass} value={pilgrimForm.emergencyContact} onChange={(e) => setPilgrimForm({ ...pilgrimForm, emergencyContact: e.target.value })} /></Field>
+                    <button disabled={busy !== null || !pilgrimagePackageId} className={primaryButton}>إنشاء حجز الحج/العمرة</button>
+                  </form>
+                  <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={!pilgrimagePackageId || busy !== null} onClick={() => runPilgrimageAllocation('rooms')} className={primaryButton}>تخصيص الغرف</button><button type="button" disabled={!pilgrimagePackageId || busy !== null} onClick={() => runPilgrimageAllocation('buses')} className={primaryButton}>توزيع المجموعات والحافلات</button></div>
+                  {pilgrimageResult && <p className="mt-4 max-h-24 overflow-auto rounded-xl bg-indigo-50 p-3 text-xs text-indigo-900">{pilgrimageResult}</p>}
+                  <div className="mt-5 space-y-3">{selectedCustomer.pilgrimageBookings?.map((booking) => <article key={booking.id} className="rounded-xl border p-4"><div className="flex flex-wrap justify-between gap-3"><div><h4 className="font-black">{booking.package?.name || booking.packageId}</h4><p className="text-xs text-slate-500">{booking.pilgrims.length} حاج · {booking.status} · {String(booking.totalAmount)}</p></div>{booking.status !== 'CANCELLED' && <button type="button" onClick={() => cancelPilgrimage(booking.id)} className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">إلغاء وإعادة المقاعد</button>}</div><div className="mt-3 grid gap-2 md:grid-cols-2">{booking.pilgrims.map((pilgrim) => <div key={pilgrim.id} className="rounded-lg bg-slate-50 p-3 text-xs"><strong>{pilgrim.fullName || selectedCustomer.fullName}</strong><p>غرفة: {pilgrim.roomNumber || 'غير مخصصة'} · حافلة: {pilgrim.busNumber || 'غير مخصصة'}</p><button type="button" disabled={busy !== null} onClick={() => issuePilgrimCard(pilgrim.id)} className="mt-2 font-bold text-indigo-700">إصدار البطاقة الرقمية</button>{pilgrim.digitalCardUrl && <a href={pilgrim.digitalCardUrl} className="mr-3 text-emerald-700">فتح البطاقة</a>}</div>)}</div></article>)}{!selectedCustomer.pilgrimageBookings?.length && <p className="text-sm text-slate-400">لا توجد حجوزات حج أو عمرة.</p>}</div>
                 </Panel>
               </>
             )}

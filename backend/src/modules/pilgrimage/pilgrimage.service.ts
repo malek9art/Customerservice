@@ -37,12 +37,15 @@ export class PilgrimageService {
     packageId: string,
     pilgrimsData: any[],
   ) {
-    await this.packageEngine.updateAvailability(packageId, pilgrimsData.length);
-    const pkg = await this.packageEngine.getPackageDetails(companyId, packageId);
-
-    if (!pkg) {
-      throw new NotFoundException(`Package ${packageId} not found`);
+    const customer = await (this.prisma as any).customer.findUnique({ where: { id: customerId } });
+    if (!customer || customer.companyId !== companyId) {
+      throw new NotFoundException('Customer not found');
     }
+    const pkg = await this.packageEngine.getPackageDetails(companyId, packageId);
+    if (!['HAJJ', 'UMRAH'].includes(pkg.type)) {
+      throw new BadRequestException('Selected package is not a Hajj or Umrah package');
+    }
+    await this.packageEngine.updateAvailability(packageId, pilgrimsData.length);
 
     const unitPrice = typeof pkg.basePrice === 'number'
       ? pkg.basePrice
@@ -84,8 +87,9 @@ export class PilgrimageService {
     });
 
     await this.syncPackageCapacity(companyId, packageId);
+    await this.logActivity(customerId, 'PILGRIMAGE_BOOKING_CREATED', `${pkg.type} booking ${booking.id} created for ${pilgrims.length} pilgrim(s)`);
 
-    return { booking, pilgrims };
+    return { booking, pilgrims, package: pkg };
   }
 
   /**
@@ -96,21 +100,32 @@ export class PilgrimageService {
       where: { id: bookingId },
     });
 
-    if (!booking) {
+    const customer = booking && await (this.prisma as any).customer.findUnique({ where: { id: booking.customerId } });
+    if (!booking || !customer || customer.companyId !== companyId) {
       throw new NotFoundException(`Pilgrimage booking ${bookingId} not found`);
     }
+    if (booking.status === 'CANCELLED') return booking;
 
     const pilgrims = await (this.prisma as any).pilgrim.findMany({
       where: { bookingId },
     });
 
-    // 1. Trigger state machine workflow for cancellation & slot restoration
+    const cancelled = await (this.prisma as any).pilgrimageBooking.update({
+      where: { id: bookingId },
+      data: { status: 'CANCELLED', cancellationReason: reason, cancelledAt: new Date() },
+    });
+    const pkg = await (this.prisma as any).package.findUnique({ where: { id: booking.packageId } });
+    await (this.prisma as any).package.update({
+      where: { id: booking.packageId },
+      data: { remainingSlots: Math.min(pkg.capacity, pkg.remainingSlots + pilgrims.length) },
+    });
+    await this.logActivity(booking.customerId, 'PILGRIMAGE_BOOKING_CANCELLED', `Pilgrimage booking ${bookingId} cancelled: ${reason}`);
     await this.workflow.trigger('pilgrimage.booking_cancelled', {
       bookingId,
       companyId,
       packageId: booking.packageId,
       customerId: booking.customerId,
-      pilgrimCount: pilgrims.length,
+      pilgrimCount: 0,
       reason: reason || 'Customer requested cancellation',
     });
 
@@ -126,9 +141,7 @@ export class PilgrimageService {
     }
 
     return {
-      success: true,
-      bookingId,
-      status: 'CANCELLED',
+      ...cancelled,
       slotsRestored: pilgrims.length,
       refundAmount: paidAmount,
     };
@@ -142,8 +155,15 @@ export class PilgrimageService {
       where: { id: bookingId },
     });
 
-    if (!booking) {
+    const customer = booking && await (this.prisma as any).customer.findUnique({ where: { id: booking.customerId } });
+    if (!booking || !customer || customer.companyId !== companyId) {
       throw new NotFoundException(`Pilgrimage booking ${bookingId} not found`);
+    }
+    if (booking.status === 'CANCELLED') {
+      throw new BadRequestException('Cancelled pilgrimage booking cannot be modified');
+    }
+    if (!Object.values(updatedData).some((value) => value !== undefined)) {
+      throw new BadRequestException('At least one booking change is required');
     }
 
     const updatedBooking = await (this.prisma as any).pilgrimageBooking.update({
@@ -165,6 +185,7 @@ export class PilgrimageService {
     packageId: string,
     options: RoomAllocationOptions = {},
   ) {
+    await this.packageEngine.getPackageDetails(companyId, packageId);
     const maxCapacity = options.maxRoomCapacity || 4;
     const groupFamilies = options.groupFamilies !== false;
     const separateByGender = options.separateByGender !== false;
@@ -282,6 +303,7 @@ export class PilgrimageService {
     packageId: string,
     options: BusAllocationOptions = {},
   ) {
+    await this.packageEngine.getPackageDetails(companyId, packageId);
     const busCapacity = options.busCapacity || 45;
     const keepBookingsTogether = options.keepBookingsTogether !== false;
     const supervisors = options.supervisors || [];
@@ -381,9 +403,14 @@ export class PilgrimageService {
       throw new NotFoundException(`Package ${packageId} not found`);
     }
 
-    const totalPilgrims = await (this.prisma as any).pilgrim.count({
-      where: { packageId },
-    });
+    const [pilgrims, bookings] = await Promise.all([
+      (this.prisma as any).pilgrim.findMany({ where: { packageId } }),
+      (this.prisma as any).pilgrimageBooking.findMany({ where: { packageId } }),
+    ]);
+    const activeBookingIds = new Set(
+      bookings.filter((booking: any) => booking.status !== 'CANCELLED').map((booking: any) => booking.id),
+    );
+    const totalPilgrims = pilgrims.filter((pilgrim: any) => activeBookingIds.has(pilgrim.bookingId)).length;
 
     const remainingSlots = Math.max(0, pkg.capacity - totalPilgrims);
 
@@ -472,11 +499,19 @@ export class PilgrimageService {
     };
   }
 
-  async allocateToGroup(pilgrimId: string, groupId: string) {
+  async allocateToGroup(companyId: string, pilgrimId: string, groupId: string) {
+    const pilgrim = await (this.prisma as any).pilgrim.findUnique({ where: { id: pilgrimId } });
+    const group = await (this.prisma as any).pilgrimageGroup.findUnique({ where: { id: groupId } });
+    if (!pilgrim || !group || pilgrim.packageId !== group.packageId) throw new BadRequestException('Pilgrim and group must belong to the same package');
+    await this.packageEngine.getPackageDetails(companyId, pilgrim.packageId);
     return (this.prisma as any).pilgrim.update({
       where: { id: pilgrimId },
       data: { groupId },
     });
+  }
+
+  private logActivity(customerId: string, action: string, description: string) {
+    return (this.prisma as any).activityLog.create({ data: { customerId, action, description } });
   }
 
   async getOperationsDashboard(companyId: string, type: string) {

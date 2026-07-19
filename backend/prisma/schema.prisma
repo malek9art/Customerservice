@@ -326,6 +326,8 @@ model PilgrimageBooking {
   status           String         @default("PENDING")
   totalAmount      Decimal
   paidAmount       Decimal        @default(0)
+  cancellationReason String?
+  cancelledAt      DateTime?
   
   pilgrims         Pilgrim[]
   
@@ -426,6 +428,13 @@ model Pilgrim {
   packageId           String
   package             Package           @relation(fields: [packageId], references: [id])
 
+  fullName             String?
+  gender               String?
+  passportNumber       String?
+  roomNumber           String?
+  roomType             String?
+  busNumber            String?
+  seatNumber           Int?
   medicalInfo         String?
   emergencyContact    String?
   vaccinationStatus   String?           // PENDING, COMPLETED

@@ -19,7 +19,7 @@ export interface Customer {
   visas?: VisaApplication[];
   flightBookings?: FlightBooking[];
   hotelBookings?: HotelBooking[];
-  pilgrimageBookings?: unknown[];
+  pilgrimageBookings?: PilgrimageBooking[];
   transactions?: unknown[];
   documents?: unknown[];
   activityLogs?: unknown[];
@@ -125,6 +125,18 @@ export interface HotelGuest {
   type: 'ADULT' | 'CHILD';
   dateOfBirth?: string;
   email?: string;
+}
+
+export interface Pilgrim {
+  id: string; bookingId: string; packageId: string; customerId: string; fullName?: string;
+  gender?: string; passportNumber?: string; roomNumber?: string; roomType?: string;
+  busNumber?: string; seatNumber?: number; groupId?: string; digitalCardUrl?: string;
+  medicalInfo?: string; emergencyContact?: string;
+}
+export interface PilgrimageBooking {
+  id: string; packageId: string; customerId: string; status: string;
+  totalAmount: number | string; paidAmount: number | string; cancellationReason?: string;
+  pilgrims: Pilgrim[]; package?: TravelPackage;
 }
 
 export interface TravelPackage {
@@ -276,42 +288,24 @@ export const TravelOSApi = {
   },
 
   pilgrimage: {
-    getBookings: (companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/pilgrimage/dashboard', { companyId }),
-    createBooking: (
-      body: { customerId: string; packageId: string; pilgrims: any[] },
-      companyId = DEFAULT_COMPANY_ID,
-    ) =>
-      apiFetch<any>('/pilgrimage/bookings', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        companyId,
-      }),
-    allocateRooms: (body: any, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/pilgrimage/room-allocation', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        companyId,
-      }),
-    allocateBuses: (body: any, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/pilgrimage/bus-allocation', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        companyId,
-      }),
-    syncCapacity: (packageId: string, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>(`/pilgrimage/packages/${packageId}/capacity-sync`, {
-        method: 'POST',
-        companyId,
-      }),
-    generatePilgrimCard: (
-      pilgrimId: string,
-      companyId = DEFAULT_COMPANY_ID,
-    ) =>
-      apiFetch<any>(`/pilgrimage/pilgrims/${pilgrimId}/digital-card`, {
-        method: 'POST',
-        companyId,
-      }),
+    dashboard: (companyId = DEFAULT_COMPANY_ID) => apiFetch<Record<string, unknown>>('/pilgrimage/dashboard', { companyId }),
+    getBookings: (companyId = DEFAULT_COMPANY_ID) => apiFetch<Record<string, unknown>>('/pilgrimage/dashboard', { companyId }),
+    createBooking: (body: { customerId: string; packageId: string; pilgrims: Array<{ fullName: string; gender: string; passportNumber?: string; medicalInfo?: string; emergencyContact?: string }> }, companyId = DEFAULT_COMPANY_ID) => apiFetch<{ booking: PilgrimageBooking; pilgrims: Pilgrim[]; package: TravelPackage }>('/pilgrimage/bookings', { method: 'POST', body: JSON.stringify(body), companyId }),
+    modifyBooking: (id: string, body: { status?: string; paidAmount?: number }, companyId = DEFAULT_COMPANY_ID) => apiFetch<PilgrimageBooking>(`/pilgrimage/bookings/${id}/modify`, { method: 'PATCH', body: JSON.stringify(body), companyId }),
+    cancelBooking: (id: string, reason: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<PilgrimageBooking>(`/pilgrimage/bookings/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }), companyId }),
+    allocateRooms: (input: string | { packageId: string; options?: { maxRoomCapacity?: number; groupFamilies?: boolean; separateByGender?: boolean } }, maxRoomCapacity = 4, companyId = DEFAULT_COMPANY_ID) => {
+      const packageId = typeof input === 'string' ? input : input.packageId;
+      const capacity = typeof input === 'string' ? maxRoomCapacity : input.options?.maxRoomCapacity || 4;
+      return apiFetch<Record<string, unknown>>('/pilgrimage/room-allocation', { method: 'POST', body: JSON.stringify({ packageId, maxRoomCapacity: capacity }), companyId });
+    },
+    allocateBuses: (input: string | { packageId: string; options?: { busCapacity?: number; keepBookingsTogether?: boolean } }, busCapacity = 45, companyId = DEFAULT_COMPANY_ID) => {
+      const packageId = typeof input === 'string' ? input : input.packageId;
+      const capacity = typeof input === 'string' ? busCapacity : input.options?.busCapacity || 45;
+      return apiFetch<Record<string, unknown>>('/pilgrimage/bus-allocation', { method: 'POST', body: JSON.stringify({ packageId, busCapacity: capacity }), companyId });
+    },
+    syncCapacity: (packageId: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<Record<string, unknown>>(`/pilgrimage/packages/${packageId}/capacity-sync`, { method: 'POST', companyId }),
+    generatePilgrimCard: (pilgrimId: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<{ pilgrimId: string; cardUrl: string }>(`/pilgrimage/pilgrims/${pilgrimId}/digital-card`, { method: 'POST', companyId }),
+    allocateGroup: (pilgrimId: string, groupId: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<Pilgrim>('/pilgrimage/allocate-group', { method: 'POST', body: JSON.stringify({ pilgrimId, groupId }), companyId }),
   },
 
   flights: {

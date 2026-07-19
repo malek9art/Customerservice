@@ -91,6 +91,13 @@ export class CustomersService {
       }),
     ]);
 
+    const pilgrimageBookingsWithDetails = await Promise.all(
+      pilgrimageBookings.map(async (booking: any) => ({
+        ...booking,
+        package: await (this.prisma as any).package.findUnique({ where: { id: booking.packageId } }),
+        pilgrims: await (this.prisma as any).pilgrim.findMany({ where: { bookingId: booking.id } }),
+      })),
+    );
     const interests = Array.isArray(customer.interests)
       ? customer.interests
       : [];
@@ -107,7 +114,7 @@ export class CustomersService {
       familyMembers,
       flightBookings,
       hotelBookings,
-      pilgrimageBookings,
+      pilgrimageBookings: pilgrimageBookingsWithDetails,
       visas,
       transactions,
       documents,
