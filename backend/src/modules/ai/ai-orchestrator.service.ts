@@ -133,14 +133,13 @@ export class AiOrchestrator {
             break;
 
           case 'POST_ACCOUNTING_JOURNAL':
-            stepOutput = await (this.prisma as any).journal.create({
-              data: {
-                companyId,
-                referenceNumber: `JRNL-${nanoid(8).toUpperCase()}`,
-                description: `Auto Journal for ${stepInput.bookingType || 'Booking'}`,
-                sourceType: stepInput.bookingType || 'AI_CHAIN',
-              },
-            });
+            // Accounting journals must only be persisted by AccountingPostingEngine,
+            // which guarantees balanced debit and credit entries.
+            stepOutput = {
+              delegated: true,
+              eventType: stepInput.bookingType || 'AI_CHAIN',
+              status: 'AWAITING_ACCOUNTING_EVENT',
+            };
             break;
 
           case 'DISPATCH_NOTIFICATION':
