@@ -317,6 +317,12 @@ export class PrismaService implements OnModuleInit {
   get analyticsSnapshot() { return this.createGenericModelStore('analyticsSnapshot'); }
   get aiActionLog() { return this.createGenericModelStore('aiActionLog'); }
 
+  getMemoryStoreStats() {
+    return Object.fromEntries(
+      Object.entries(this.stores).map(([model, store]) => [model, store.size]),
+    );
+  }
+
   async onModuleInit() {
     console.log('Stateful Prisma Memory Store initialized');
   }

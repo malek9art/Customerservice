@@ -112,6 +112,9 @@ export default function OperationsDashboard() {
   const [financialDashboard, setFinancialDashboard] = useState<Record<string, number>>({});
   const [ledgerEntries, setLedgerEntries] = useState<Array<Record<string, unknown>>>([]);
   const [analytics, setAnalytics] = useState<Awaited<ReturnType<typeof TravelOSApi.analytics.executive>> | null>(null);
+  const [adminData, setAdminData] = useState<Awaited<ReturnType<typeof TravelOSApi.admin.commandCenter>> | null>(null);
+  const [adminUsers, setAdminUsers] = useState<Awaited<ReturnType<typeof TravelOSApi.admin.users>>>([]);
+  const [adminLogs, setAdminLogs] = useState<Awaited<ReturnType<typeof TravelOSApi.admin.logs>>>([]);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({});
   const [paymentMethod, setPaymentMethod] = useState('CASH');
 
@@ -166,6 +169,7 @@ export default function OperationsDashboard() {
     lastName: '',
     email: '',
   });
+  const [adminUserForm, setAdminUserForm] = useState({ fullName: '', email: '', role: 'EMPLOYEE', permissions: 'CUSTOMERS_READ,CUSTOMERS_WRITE' });
   const [invoiceForm, setInvoiceForm] = useState({ description: '', quantity: 1, unitPrice: 0, taxRate: 0, discount: 0, currency: 'USD' });
   const [pilgrimForm, setPilgrimForm] = useState({ fullName: '', gender: 'MALE', passportNumber: '', medicalInfo: '', emergencyContact: '' });
   const [packageForm, setPackageForm] = useState({
@@ -215,14 +219,16 @@ export default function OperationsDashboard() {
       TravelOSApi.accounting.getDashboard(),
       TravelOSApi.accounting.ledger(),
       TravelOSApi.analytics.executive(),
+      TravelOSApi.admin.commandCenter(), TravelOSApi.admin.users(), TravelOSApi.admin.logs(),
     ])
-      .then(([, customerResults, passports, packageResults, finance, ledger, analyticsData]) => {
+      .then(([, customerResults, passports, packageResults, finance, ledger, analyticsData, command, users, logs]) => {
         setCustomers(customerResults);
         setInventory(passports);
         setPackages(packageResults);
         setFinancialDashboard(finance);
         setLedgerEntries(ledger);
         setAnalytics(analyticsData);
+        setAdminData(command); setAdminUsers(users); setAdminLogs(logs);
         setConnected(true);
       })
       .catch((error) => {
@@ -599,6 +605,9 @@ export default function OperationsDashboard() {
   const payInvoice = (invoiceId: string, balance: number) => {
     if (!selectedCustomer) return; const amount = paymentAmounts[invoiceId] || balance;
     void runTask(`pay-${invoiceId}`, async () => { await TravelOSApi.accounting.recordPayment(invoiceId, { amount, method: paymentMethod }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setAnalytics(await TravelOSApi.analytics.executive()); setNotice({ type: 'success', text: 'تم تسجيل الدفعة وتحديث الرصيد والقيد.' }); });
+  };
+  const createAdminUser = (event: FormEvent) => {
+    event.preventDefault(); void runTask('admin-user', async () => { await TravelOSApi.admin.createUser({ ...adminUserForm, permissions: adminUserForm.permissions.split(',').map((item) => item.trim()).filter(Boolean) }); setAdminUsers(await TravelOSApi.admin.users()); setAdminData(await TravelOSApi.admin.commandCenter()); setNotice({type:'success',text:'تم إنشاء المستخدم وصلاحياته.'}); });
   };
 
   return (
@@ -1175,6 +1184,8 @@ export default function OperationsDashboard() {
                 </Panel>
 
                 {analytics && <Panel title="التحليلات التنفيذية" description="مؤشرات مباشرة محسوبة من بيانات Memory Store الفعلية."><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(analytics.counts).map(([key,value]) => <div key={key} className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">{key}</p><strong className="text-2xl">{value}</strong></div>)}</div><div className="mt-5 grid gap-4 md:grid-cols-2"><div className="rounded-xl border p-4"><h3 className="font-black">المالية</h3>{Object.entries(analytics.finance).map(([key,value]) => <div key={key} className="mt-2 flex justify-between text-sm"><span>{key}</span><strong>{value}</strong></div>)}</div><div className="rounded-xl border p-4"><h3 className="font-black">KPIs</h3><p className="mt-2">الإلغاءات: <strong>{analytics.cancellations}</strong></p><p>نسبة الإشغال: <strong>{analytics.occupancyRate}%</strong></p></div></div><div className="mt-5 grid gap-4 md:grid-cols-3"><div><h3 className="font-black">أفضل العملاء</h3>{analytics.topCustomers.map((item) => <p key={item.name} className="mt-2 text-sm">{item.name}: {item.revenue}</p>)}</div><div><h3 className="font-black">أفضل الوجهات</h3>{analytics.topDestinations.map((item) => <p key={item.destination} className="mt-2 text-sm">{item.destination}: {item.count}</p>)}</div><div><h3 className="font-black">أفضل الباقات</h3>{analytics.topPackages.map((item) => <p key={item.name} className="mt-2 text-sm">{item.name}: {item.booked}</p>)}</div></div><div className="mt-5 space-y-2">{analytics.charts.bookings.map((item) => <div key={item.label}><div className="flex justify-between text-xs"><span>{item.label}</span><span>{item.value}</span></div><div className="h-3 rounded bg-slate-100"><div className="h-full rounded bg-indigo-600" style={{width:`${Math.min(100,item.value*10)}%`}} /></div></div>)}</div></Panel>}
+
+                {adminData && <Panel title="إدارة النظام" description="المستخدمون والصلاحيات والمراقبة وسجل العمليات وMemory Store."><div className="grid gap-3 md:grid-cols-4">{Object.entries(adminData.stats).map(([key,value])=><div key={key} className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">{key}</p><strong>{String(value)}</strong></div>)}</div><form onSubmit={createAdminUser} className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Field label="اسم المستخدم"><input required className={inputClass} value={adminUserForm.fullName} onChange={(e)=>setAdminUserForm({...adminUserForm,fullName:e.target.value})}/></Field><Field label="البريد"><input required type="email" className={inputClass} value={adminUserForm.email} onChange={(e)=>setAdminUserForm({...adminUserForm,email:e.target.value})}/></Field><Field label="الدور"><select className={inputClass} value={adminUserForm.role} onChange={(e)=>setAdminUserForm({...adminUserForm,role:e.target.value})}><option>EMPLOYEE</option><option>MANAGER</option><option>ACCOUNTANT</option><option>ADMIN</option></select></Field><Field label="الصلاحيات"><input className={inputClass} value={adminUserForm.permissions} onChange={(e)=>setAdminUserForm({...adminUserForm,permissions:e.target.value})}/></Field><button disabled={busy!==null} className={primaryButton}>إضافة المستخدم</button></form><div className="mt-5 grid gap-4 md:grid-cols-3"><div><h3 className="font-black">المستخدمون</h3>{adminUsers.map(u=><p key={u.id} className="mt-2 text-xs">{u.fullName} · {u.role} · {u.isActive?'نشط':'معطل'}</p>)}</div><div><h3 className="font-black">الخدمات</h3>{adminData.services.map(s=><p key={s.name} className="mt-2 text-xs">{s.name}: <span className="text-emerald-600">{s.status}</span></p>)}</div><div><h3 className="font-black">Memory Store</h3>{Object.entries(adminData.memory).map(([key,value])=><p key={key} className="mt-1 text-xs">{key}: {value}</p>)}</div></div><div className="mt-5"><h3 className="font-black">سجل العمليات</h3>{adminLogs.slice(0,15).map(log=><p key={log.id} className="mt-2 border-b pb-2 text-xs">{log.action} — {log.description}</p>)}</div></Panel>}
               </>
             )}
           </div>

@@ -110,6 +110,9 @@ model Employee {
   branchId  String?
   branch    Branch?  @relation(fields: [branchId], references: [id])
   fullName  String
+  email     String?
+  role      String   @default("EMPLOYEE")
+  permissions String[] @default([])
   isActive  Boolean  @default(true)
 }
 

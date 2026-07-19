@@ -480,6 +480,16 @@ export const TravelOSApi = {
       }),
   },
 
+  admin: {
+    commandCenter: (companyId = DEFAULT_COMPANY_ID) => apiFetch<{ stats: Record<string, number | string>; services: Array<{name:string;status:string}>; memory: Record<string,number> }>('/admin/command-center',{companyId}),
+    users: (companyId = DEFAULT_COMPANY_ID) => apiFetch<Array<{id:string;fullName:string;email:string;role:string;permissions:string[];isActive:boolean}>>('/admin/users',{companyId}),
+    createUser: (body:{fullName:string;email:string;role:string;permissions:string[]},companyId=DEFAULT_COMPANY_ID)=>apiFetch('/admin/users',{method:'POST',body:JSON.stringify(body),companyId}),
+    updateUser: (id:string,body:Record<string,unknown>,companyId=DEFAULT_COMPANY_ID)=>apiFetch(`/admin/users/${id}`,{method:'PATCH',body:JSON.stringify(body),companyId}),
+    logs: (companyId=DEFAULT_COMPANY_ID)=>apiFetch<Array<{id:string;action:string;description:string;createdAt:string}>>('/admin/logs',{companyId}),
+    settings: (companyId=DEFAULT_COMPANY_ID)=>apiFetch<Record<string,unknown>>('/admin/settings',{companyId}),
+    updateSettings: (settings:Record<string,unknown>,companyId=DEFAULT_COMPANY_ID)=>apiFetch('/admin/settings',{method:'PATCH',body:JSON.stringify({settings}),companyId}),
+  },
+
   analytics: {
     executive: (companyId = DEFAULT_COMPANY_ID) => apiFetch<{ counts: Record<string, number>; finance: Record<string, number>; cancellations: number; occupancyRate: number; topCustomers: Array<{ name: string; revenue: number }>; topDestinations: Array<{ destination: string; count: number }>; topPackages: Array<{ name: string; booked: number }>; charts: Record<string, Array<{ label: string; value: number }>> }>('/analytics/dashboard/executive', { companyId }),
   },
