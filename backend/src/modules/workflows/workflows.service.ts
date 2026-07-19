@@ -24,7 +24,7 @@ export class WorkflowService {
 
   async trigger(eventName: string, payload: any) {
     this.logger.log(`Workflow State Event Triggered: [${eventName}] for entity [${payload.bookingId || payload.id || payload.pnr || 'N/A'}]`);
-    this.eventEmitter.emit(eventName, payload);
+    await this.eventEmitter.emitAsync(eventName, payload);
   }
 
   @OnEvent('pilgrimage.booking_cancelled')

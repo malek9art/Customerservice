@@ -23,6 +23,9 @@ export interface Customer {
   transactions?: unknown[];
   documents?: unknown[];
   activityLogs?: unknown[];
+  invoices?: Invoice[];
+  payments?: Payment[];
+  financialSummary?: { invoiced: number; paid: number; outstanding: number };
   aiInsights?: {
     summary: string;
     recommendations: string[];
@@ -126,6 +129,10 @@ export interface HotelGuest {
   dateOfBirth?: string;
   email?: string;
 }
+
+export interface Payment { id: string; invoiceId: string; customerId?: string; amount: number; method: string; transactionId?: string; status: string; createdAt: string; }
+export interface InvoiceItem { description: string; quantity: number; unitPrice: number; serviceType?: string; serviceId?: string; }
+export interface Invoice { id: string; customerId: string; number: string; subtotal: number; discount: number; taxRate: number; taxAmount: number; amount: number; paidAmount: number; balance: number; currency: string; status: string; items: InvoiceItem[]; payments?: Payment[]; sourceType?: string; createdAt: string; }
 
 export interface Pilgrim {
   id: string; bookingId: string; packageId: string; customerId: string; fullName?: string;
@@ -447,14 +454,12 @@ export const TravelOSApi = {
   },
 
   accounting: {
-    getDashboard: (companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/accounting/dashboard', { companyId }),
-    createInvoice: (body: any, companyId = DEFAULT_COMPANY_ID) =>
-      apiFetch<any>('/accounting/invoices', {
-        method: 'POST',
-        body: JSON.stringify(body),
-        companyId,
-      }),
+    getDashboard: (companyId = DEFAULT_COMPANY_ID) => apiFetch<Record<string, number>>('/accounting/dashboard', { companyId }),
+    customerInvoices: (customerId: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<Invoice[]>(`/accounting/invoices?customerId=${customerId}`, { companyId }),
+    customerStatement: (customerId: string, companyId = DEFAULT_COMPANY_ID) => apiFetch<Record<string, unknown>>(`/accounting/customers/${customerId}/statement`, { companyId }),
+    ledger: (companyId = DEFAULT_COMPANY_ID) => apiFetch<Array<Record<string, unknown>>>('/accounting/ledger', { companyId }),
+    createInvoice: (body: { customerId: string; items: InvoiceItem[]; taxRate?: number; discount?: number; currency?: string }, companyId = DEFAULT_COMPANY_ID) => apiFetch<Invoice>('/accounting/invoices', { method: 'POST', body: JSON.stringify(body), companyId }),
+    recordPayment: (invoiceId: string, body: { amount: number; method: string; transactionId?: string; notes?: string }, companyId = DEFAULT_COMPANY_ID) => apiFetch<{ payment: Payment; invoice: Invoice }>(`/accounting/invoices/${invoiceId}/payments`, { method: 'POST', body: JSON.stringify(body), companyId }),
     processBankStatement: (body: any, companyId = DEFAULT_COMPANY_ID) =>
       apiFetch<any>('/accounting/reconciliation/process-statement', {
         method: 'POST',

@@ -98,6 +98,8 @@ export class HotelBookingService {
         companyId,
         customerId: body.customerId,
         hotelName: booking.hotelName,
+        amount: totalAmount,
+        currency: booking.currency,
       }),
       this.logActivity(
         body.customerId,

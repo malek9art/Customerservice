@@ -388,8 +388,16 @@ model Invoice {
   customer         Customer?      @relation(fields: [customerId], references: [id])
   
   number           String         @unique
+  subtotal         Decimal        @default(0)
+  discount         Decimal        @default(0)
+  taxRate          Decimal        @default(0)
   amount           Decimal
   taxAmount        Decimal        @default(0)
+  paidAmount       Decimal        @default(0)
+  balance          Decimal        @default(0)
+  currency         String         @default("USD")
+  sourceType       String?
+  sourceId         String?
   status           String         @default("DRAFT") // DRAFT, SENT, PAID, PARTIAL, VOID
   dueDate          DateTime?
   
@@ -406,11 +414,13 @@ model Payment {
   company          Company        @relation(fields: [companyId], references: [id])
   invoiceId        String?
   invoice          Invoice?       @relation(fields: [invoiceId], references: [id])
+  customerId       String?
   
   amount           Decimal
   method           String         // CASH, BANK_TRANSFER, GATEWAY
   gateway          String?
   transactionId    String?
+  notes            String?
   status           String         @default("COMPLETED")
   
   createdAt        DateTime       @default(now())

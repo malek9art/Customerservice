@@ -59,6 +59,8 @@ export class VisaService {
       id: application.id,
       customerId: data.customerId,
       companyId,
+      amount: data.fee ?? 100,
+      currency: 'USD',
     });
     await this.audit.log({
       companyId,

@@ -109,6 +109,10 @@ export default function OperationsDashboard() {
   const [editingPackageId, setEditingPackageId] = useState('');
   const [pilgrimagePackageId, setPilgrimagePackageId] = useState('');
   const [pilgrimageResult, setPilgrimageResult] = useState('');
+  const [financialDashboard, setFinancialDashboard] = useState<Record<string, number>>({});
+  const [ledgerEntries, setLedgerEntries] = useState<Array<Record<string, unknown>>>([]);
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({});
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
 
   const [customerForm, setCustomerForm] = useState({
     fullName: '',
@@ -161,6 +165,7 @@ export default function OperationsDashboard() {
     lastName: '',
     email: '',
   });
+  const [invoiceForm, setInvoiceForm] = useState({ description: '', quantity: 1, unitPrice: 0, taxRate: 0, discount: 0, currency: 'USD' });
   const [pilgrimForm, setPilgrimForm] = useState({ fullName: '', gender: 'MALE', passportNumber: '', medicalInfo: '', emergencyContact: '' });
   const [packageForm, setPackageForm] = useState({
     name: '', type: 'TOURISM', season: '', description: '', startDate: '2026-10-01',
@@ -206,11 +211,15 @@ export default function OperationsDashboard() {
       TravelOSApi.customers.search(''),
       TravelOSApi.passports.getInventory(),
       TravelOSApi.packages.list(),
+      TravelOSApi.accounting.getDashboard(),
+      TravelOSApi.accounting.ledger(),
     ])
-      .then(([, customerResults, passports, packageResults]) => {
+      .then(([, customerResults, passports, packageResults, finance, ledger]) => {
         setCustomers(customerResults);
         setInventory(passports);
         setPackages(packageResults);
+        setFinancialDashboard(finance);
+        setLedgerEntries(ledger);
         setConnected(true);
       })
       .catch((error) => {
@@ -580,6 +589,14 @@ export default function OperationsDashboard() {
     if (!selectedCustomer) return;
     void runTask(`cancel-pilgrimage-${bookingId}`, async () => { await TravelOSApi.pilgrimage.cancelBooking(bookingId, 'طلب إلغاء من العميل'); await refreshCustomer(selectedCustomer.id); setPackages(await TravelOSApi.packages.list()); setPilgrimageResult('تم الإلغاء وإعادة المقاعد إلى الباقة.'); });
   };
+  const createManualInvoice = (event: FormEvent) => {
+    event.preventDefault(); if (!selectedCustomer) return;
+    void runTask('create-invoice', async () => { await TravelOSApi.accounting.createInvoice({ customerId: selectedCustomer.id, items: [{ description: invoiceForm.description, quantity: invoiceForm.quantity, unitPrice: invoiceForm.unitPrice }], taxRate: invoiceForm.taxRate, discount: invoiceForm.discount, currency: invoiceForm.currency }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setNotice({ type: 'success', text: 'تم إنشاء الفاتورة والقيد اليومي.' }); });
+  };
+  const payInvoice = (invoiceId: string, balance: number) => {
+    if (!selectedCustomer) return; const amount = paymentAmounts[invoiceId] || balance;
+    void runTask(`pay-${invoiceId}`, async () => { await TravelOSApi.accounting.recordPayment(invoiceId, { amount, method: paymentMethod }); await refreshCustomer(selectedCustomer.id); setFinancialDashboard(await TravelOSApi.accounting.getDashboard()); setLedgerEntries(await TravelOSApi.accounting.ledger()); setNotice({ type: 'success', text: 'تم تسجيل الدفعة وتحديث الرصيد والقيد.' }); });
+  };
 
   return (
     <AppShell>
@@ -694,6 +711,7 @@ export default function OperationsDashboard() {
                       <span className="rounded-full bg-violet-50 px-3 py-1.5 text-violet-700">{selectedCustomer.flightBookings?.length || 0} رحلة</span>
                       <span className="rounded-full bg-orange-50 px-3 py-1.5 text-orange-700">{selectedCustomer.hotelBookings?.length || 0} فندق</span>
                       <span className="rounded-full bg-teal-50 px-3 py-1.5 text-teal-700">{selectedCustomer.pilgrimageBookings?.length || 0} حج/عمرة</span>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">متبقي {selectedCustomer.financialSummary?.outstanding || 0}</span>
                     </div>
                   </div>
                   {selectedCustomer.aiInsights && (
@@ -1144,6 +1162,13 @@ export default function OperationsDashboard() {
                   <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={!pilgrimagePackageId || busy !== null} onClick={() => runPilgrimageAllocation('rooms')} className={primaryButton}>تخصيص الغرف</button><button type="button" disabled={!pilgrimagePackageId || busy !== null} onClick={() => runPilgrimageAllocation('buses')} className={primaryButton}>توزيع المجموعات والحافلات</button></div>
                   {pilgrimageResult && <p className="mt-4 max-h-24 overflow-auto rounded-xl bg-indigo-50 p-3 text-xs text-indigo-900">{pilgrimageResult}</p>}
                   <div className="mt-5 space-y-3">{selectedCustomer.pilgrimageBookings?.map((booking) => <article key={booking.id} className="rounded-xl border p-4"><div className="flex flex-wrap justify-between gap-3"><div><h4 className="font-black">{booking.package?.name || booking.packageId}</h4><p className="text-xs text-slate-500">{booking.pilgrims.length} حاج · {booking.status} · {String(booking.totalAmount)}</p></div>{booking.status !== 'CANCELLED' && <button type="button" onClick={() => cancelPilgrimage(booking.id)} className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">إلغاء وإعادة المقاعد</button>}</div><div className="mt-3 grid gap-2 md:grid-cols-2">{booking.pilgrims.map((pilgrim) => <div key={pilgrim.id} className="rounded-lg bg-slate-50 p-3 text-xs"><strong>{pilgrim.fullName || selectedCustomer.fullName}</strong><p>غرفة: {pilgrim.roomNumber || 'غير مخصصة'} · حافلة: {pilgrim.busNumber || 'غير مخصصة'}</p><button type="button" disabled={busy !== null} onClick={() => issuePilgrimCard(pilgrim.id)} className="mt-2 font-bold text-indigo-700">إصدار البطاقة الرقمية</button>{pilgrim.digitalCardUrl && <a href={pilgrim.digitalCardUrl} className="mr-3 text-emerald-700">فتح البطاقة</a>}</div>)}</div></article>)}{!selectedCustomer.pilgrimageBookings?.length && <p className="text-sm text-slate-400">لا توجد حجوزات حج أو عمرة.</p>}</div>
+                </Panel>
+
+                <Panel title="المحاسبة والفواتير" description="الفواتير التلقائية، الدفعات، الأرصدة ودفتر الأستاذ.">
+                  <div className="grid gap-3 md:grid-cols-4">{[['الإيرادات','revenue'],['المدفوع','paid'],['المستحق','outstanding'],['الفواتير','totalInvoices']].map(([label,key]) => <div key={key} className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">{label}</p><strong className="text-xl">{financialDashboard[key] || 0}</strong></div>)}</div>
+                  <form onSubmit={createManualInvoice} className="mt-5 grid gap-3 md:grid-cols-3"><Field label="بند الفاتورة"><input required className={inputClass} value={invoiceForm.description} onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })} /></Field><Field label="الكمية"><input type="number" min={1} className={inputClass} value={invoiceForm.quantity} onChange={(e) => setInvoiceForm({ ...invoiceForm, quantity: Number(e.target.value) })} /></Field><Field label="سعر الوحدة"><input type="number" min={0} className={inputClass} value={invoiceForm.unitPrice} onChange={(e) => setInvoiceForm({ ...invoiceForm, unitPrice: Number(e.target.value) })} /></Field><Field label="الضريبة %"><input type="number" min={0} className={inputClass} value={invoiceForm.taxRate} onChange={(e) => setInvoiceForm({ ...invoiceForm, taxRate: Number(e.target.value) })} /></Field><Field label="الخصم"><input type="number" min={0} className={inputClass} value={invoiceForm.discount} onChange={(e) => setInvoiceForm({ ...invoiceForm, discount: Number(e.target.value) })} /></Field><button disabled={busy !== null} className={primaryButton}>إنشاء فاتورة يدوية</button></form>
+                  <div className="mt-5 space-y-3">{selectedCustomer.invoices?.map((invoice) => <article key={invoice.id} className="rounded-xl border p-4"><div className="flex flex-wrap justify-between"><div><strong>{invoice.number}</strong><p className="text-xs text-slate-500">{invoice.sourceType || 'MANUAL'} · {invoice.status}</p></div><div className="text-left"><strong>{invoice.amount} {invoice.currency}</strong><p className="text-xs text-rose-600">متبقي {invoice.balance}</p></div></div><div className="mt-2 text-xs">{invoice.items?.map((item, index) => <span key={index} className="ml-2">{item.description}</span>)}</div>{invoice.balance > 0 && <div className="mt-3 flex flex-wrap gap-2"><input type="number" min={0.01} max={invoice.balance} className={`${inputClass} max-w-36`} value={paymentAmounts[invoice.id] ?? invoice.balance} onChange={(e) => setPaymentAmounts({ ...paymentAmounts, [invoice.id]: Number(e.target.value) })} /><select className={`${inputClass} max-w-44`} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="CASH">نقدي</option><option value="BANK_TRANSFER">تحويل بنكي</option><option value="CARD">بطاقة</option><option value="WALLET">محفظة</option></select><button type="button" disabled={busy !== null} onClick={() => payInvoice(invoice.id, invoice.balance)} className={primaryButton}>تسجيل دفعة</button></div>}</article>)}</div>
+                  <div className="mt-5"><h3 className="font-black">آخر قيود اليومية</h3><div className="mt-2 max-h-48 overflow-auto text-xs">{ledgerEntries.slice(0,10).map((journal) => <div key={String(journal.id)} className="flex justify-between border-b py-2"><span>{String(journal.referenceNumber)}</span><span>{String(journal.description || '')}</span></div>)}</div></div>
                 </Panel>
               </>
             )}

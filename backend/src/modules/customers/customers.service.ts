@@ -74,6 +74,8 @@ export class CustomersService {
       transactions,
       documents,
       activityLogs,
+      invoices,
+      payments,
     ] = await Promise.all([
       (this.prisma as any).passportInventory.findMany({ where: { customerId } }),
       (this.prisma as any).nationalIdentity.findMany({ where: { customerId } }),
@@ -89,6 +91,8 @@ export class CustomersService {
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
+      (this.prisma as any).invoice.findMany({ where: { companyId, customerId } }),
+      (this.prisma as any).payment.findMany({ where: { companyId, customerId } }),
     ]);
 
     const pilgrimageBookingsWithDetails = await Promise.all(
@@ -119,6 +123,13 @@ export class CustomersService {
       transactions,
       documents,
       activityLogs,
+      invoices,
+      payments,
+      financialSummary: {
+        invoiced: invoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount), 0),
+        paid: payments.reduce((sum: number, payment: any) => sum + Number(payment.amount), 0),
+        outstanding: invoices.reduce((sum: number, invoice: any) => sum + Number(invoice.balance), 0),
+      },
       aiInsights: {
         summary: aiSummary.response,
         recommendations: ['Next Umrah Season Offer', 'Visa Renewal Reminder'],

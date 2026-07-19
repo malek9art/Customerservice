@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateVisaApplicationDto {
   @ApiProperty({ example: 'cust-1' })
@@ -16,4 +17,11 @@ export class CreateVisaApplicationDto {
   @IsString()
   @IsNotEmpty()
   visaType: string;
+
+  @ApiProperty({ example: 100, required: false })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fee?: number;
 }
